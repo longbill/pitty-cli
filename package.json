@@ -1,13 +1,20 @@
 {
   "name": "dsc",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "0.1.0",
+  "description": "DeepSeek Code CLI — AI coding assistant in your terminal",
+  "main": "dsc.js",
+  "bin": {
+    "dsc": "./dsc.js"
   },
-  "keywords": [],
+  "scripts": {
+    "start": "node dsc.js",
+    "test": "node -e \"require('./lib/config.js'); console.log('OK')\""
+  },
+  "keywords": ["deepseek", "cli", "ai", "coding", "assistant"],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  }
 }
