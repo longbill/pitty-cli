@@ -4,7 +4,8 @@ const readline = require('readline');
 const path = require('path');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
-const { run } = require('./lib/chat.js');
+const chat = require('./lib/chat.js');
+const { run } = chat;
 
 logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(2), node: process.version });
 
@@ -71,18 +72,25 @@ if (isInteractive) {
 
 // ── Functions ─────────────────────────────────────────────────────────
 
-function runAndExit(prompt) {
-  run(prompt, { maxTurns: 15 })
-    .catch(err => {
-      logger.logError('run', err);
-      console.error('\nError:', err.message);
-      process.exit(1);
-    });
+async function runAndExit(prompt) {
+  try {
+    const result = await run(prompt, { maxTurns: 15 });
+    if (result.aborted) {
+      console.log('\n(已取消)');
+    }
+    process.exit(0);
+  } catch (err) {
+    logger.logError('run', err);
+    console.error('\nError:', err.message);
+    process.exit(1);
+  }
 }
 
 function startRepl() {
   let messages = [];
   let running = false;
+  let lastUserInput = '';
+  let lastSigintTime = 0;
 
   console.log('DSC — DeepSeek Code CLI  (Ctrl+C to exit)\n');
 
@@ -93,17 +101,24 @@ function startRepl() {
     input: process.stdin,
     output: process.stdout,
     prompt: promptStr,
-    // Don't close on Ctrl+D — we use it differently
   });
 
   rl.on('SIGINT', () => {
     if (running) {
-      console.log('\n(Interrupting...)');
-      process.exit(0);
-    } else {
+      // Abort the current request
+      const ac = chat.currentAbort;
+      if (ac) ac.abort();
+      return;
+    }
+    // Idle: double-press within 1 second to exit
+    const now = Date.now();
+    if (now - lastSigintTime < 1000) {
       console.log('\nBye!');
       process.exit(0);
     }
+    lastSigintTime = now;
+    console.log('\n(再按一次 Ctrl+C 退出)');
+    rl.prompt();
   });
 
   rl.on('line', async (line) => {
@@ -135,11 +150,25 @@ function startRepl() {
     }
 
     // Run the prompt
+    lastUserInput = trimmed;
     running = true;
     rl.pause();
 
     try {
-      messages = await run(trimmed, { messages, maxTurns: 15 });
+      const result = await run(trimmed, { messages, maxTurns: 15 });
+      if (result.aborted) {
+        if (result.hasOutput) {
+          // Keep partial output in history
+          messages = result.messages;
+        } else {
+          // No output yet — discard and refill input
+          messages = result.messages;
+          console.log('(已取消)');
+          rl.write(lastUserInput);
+        }
+      } else {
+        messages = result.messages;
+      }
     } catch (err) {
       logger.logError('repl', err);
       console.error('\nError:', err.message);
