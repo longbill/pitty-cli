@@ -152,7 +152,26 @@ function startRepl() {
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
   }
 
+  let pendingLines = [];
+
   rl.on('line', async (line) => {
+    // Multi-line continuation: line ending with \
+    if (line.endsWith('\\') && pendingLines.length === 0 && !line.trim().startsWith('/')) {
+      pendingLines.push(line.slice(0, -1));
+      rl.prompt();
+      return;
+    }
+    if (pendingLines.length > 0) {
+      if (line.endsWith('\\')) {
+        pendingLines.push(line.slice(0, -1));
+        rl.prompt();
+        return;
+      }
+      pendingLines.push(line);
+      line = pendingLines.join('\n');
+      pendingLines = [];
+    }
+
     const trimmed = line.trim();
 
     if (!trimmed) {
