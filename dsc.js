@@ -177,19 +177,22 @@ function startRepl() {
     }
 
     afterRun();
-    rl.prompt();
 
     if (result && result.aborted) {
       if (result.hasOutput) {
         messages = result.messages;
       } else {
         messages = result.messages;
-        console.log('(已取消)');
+        process.stdout.write('\x1b[90m(已取消)\x1b[0m\n');
+        rl.prompt();
         rl.write(lastUserInput);
+        return;
       }
     } else if (result) {
       messages = result.messages;
     }
+
+    rl.prompt();
   });
 
   rl.prompt();
