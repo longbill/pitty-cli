@@ -1,3 +1,91 @@
+#!/usr/bin/env node
+
+const readline = require('readline');
+const path = require('path');
+const logger = require('./lib/logger.js');
+const config = require('./lib/config.js');
+const chat = require('./lib/chat.js');
+const { run } = chat;
+
+logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(2), node: process.version });
+
+// ── CLI args ──────────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+DSC — DeepSeek Code CLI
+
+Usage:
+  dsc                      Start interactive REPL
+  dsc "your prompt"        Run a single prompt
+  echo "prompt" | dsc      Pipe input
+  dsc --init               Create default ~/.dsc.json
+  dsc --help               Show this help
+
+Config: ${config.CONFIG_PATH}
+  - apiKey:    Your DeepSeek API key
+  - baseUrl:   API base URL (default: https://api.deepseek.com)
+  - model:     Model name (default: deepseek-chat)
+  - maxTokens: Max tokens per response (default: 4096)
+  - tools:     Object mapping tool names to true/false
+`);
+  process.exit(0);
+}
+
+if (args.includes('--init')) {
+  const cfg = config.load();
+  config.save(cfg);
+  console.log(`Config created at ${config.CONFIG_PATH}`);
+  console.log('Edit it to add your API key.');
+  process.exit(0);
+}
+
+// ── Check API key ─────────────────────────────────────────────────────
+const cfg = config.load();
+if (!cfg.apiKey) {
+  cfg.apiKey = process.env.DEEPSEEK_API_KEY || '';
+  if (cfg.apiKey) config.save(cfg);
+}
+if (!cfg.apiKey) {
+  console.error(`No API key found. Edit ${config.CONFIG_PATH} and set "apiKey".`);
+  console.error('Or set the DEEPSEEK_API_KEY environment variable.');
+  process.exit(1);
+}
+
+// ── REPL mode / single prompt ────────────────────────────────────────
+const isInteractive = process.stdin.isTTY && !args.length;
+
+if (isInteractive) {
+  startRepl();
+} else if (args.length > 0) {
+  runAndExit(args.join(' '));
+} else {
+  // Pipe mode
+  const buffers = [];
+  process.stdin.on('data', (d) => buffers.push(d));
+  process.stdin.on('end', () => {
+    const input = Buffer.concat(buffers).toString('utf-8').trim();
+    if (input) runAndExit(input);
+  });
+}
+
+// ── Functions ─────────────────────────────────────────────────────────
+
+async function runAndExit(prompt) {
+  try {
+    const result = await run(prompt, { maxTurns: 15 });
+    if (result.aborted) {
+      console.log('\n(已取消)');
+    }
+    process.exit(0);
+  } catch (err) {
+    logger.logError('run', err);
+    console.error('\nError:', err.message);
+    process.exit(1);
+  }
+}
+
 function startRepl() {
   let messages = [];
   let running = false;
@@ -31,14 +119,8 @@ function startRepl() {
     rl.prompt();
   }
 
-  // readline sets raw mode on stdin (Ctrl+C → \x03 character), so its 'SIGINT'
-  // event only fires when readline is actively reading. During await run(),
-  // readline is not reading — we temporarily switch the terminal back to cooked
-  // mode so Ctrl+C sends the OS SIGINT signal instead, handled at process level.
-  // We restore raw mode before calling rl.prompt() so readline works correctly.
   rl.on('SIGINT', handleSigint);
 
-  // Persist handler but only attach during requests
   let processSigint = null;
 
   function beforeRun() {
@@ -54,7 +136,6 @@ function startRepl() {
       process.removeListener('SIGINT', processSigint);
       processSigint = null;
     }
-    // Restore raw mode before readline resumes
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
   }
 
