@@ -103,14 +103,13 @@ function startRepl() {
     prompt: promptStr,
   });
 
-  rl.on('SIGINT', () => {
+  // Ctrl+C handler — works both via readline (idle) and raw stdin (running)
+  function handleSigint() {
     if (running) {
-      // Abort the current request
       const ac = chat.currentAbort;
       if (ac) ac.abort();
       return;
     }
-    // Idle: double-press within 1 second to exit
     const now = Date.now();
     if (now - lastSigintTime < 1000) {
       console.log('\nBye!');
@@ -119,7 +118,34 @@ function startRepl() {
     lastSigintTime = now;
     console.log('\n(再按一次 Ctrl+C 退出)');
     rl.prompt();
-  });
+  }
+
+  rl.on('SIGINT', handleSigint);
+
+  // Raw stdin listener for Ctrl+C while a request is in flight.
+  // readline's SIGINT event only fires when readline is actively reading,
+  // which it isn't during the await — so we listen on the raw stdin directly.
+  let rawDataHandler = null;
+  function startRawSigint() {
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    rawDataHandler = (data) => {
+      const key = data.toString();
+      if (key === '\x03') {
+        handleSigint();
+      } else {
+        // Forward other keystrokes back to stdin so readline can pick them up later
+        process.stdin.unshift(data);
+      }
+    };
+    process.stdin.on('data', rawDataHandler);
+  }
+
+  function stopRawSigint() {
+    if (rawDataHandler) {
+      process.stdin.removeListener('data', rawDataHandler);
+      rawDataHandler = null;
+    }
+  }
 
   rl.on('line', async (line) => {
     const trimmed = line.trim();
@@ -152,16 +178,14 @@ function startRepl() {
     // Run the prompt
     lastUserInput = trimmed;
     running = true;
-    rl.pause();
+    startRawSigint();
 
     try {
       const result = await run(trimmed, { messages, maxTurns: 15 });
       if (result.aborted) {
         if (result.hasOutput) {
-          // Keep partial output in history
           messages = result.messages;
         } else {
-          // No output yet — discard and refill input
           messages = result.messages;
           console.log('(已取消)');
           rl.write(lastUserInput);
@@ -175,6 +199,7 @@ function startRepl() {
     }
 
     running = false;
+    stopRawSigint();
     rl.prompt();
   });
 
