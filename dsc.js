@@ -124,8 +124,8 @@ function startRepl() {
     process.stdout.write('\n\x1b[90m(再按一次 Ctrl+C 退出)\x1b[0m');
 
     ctrlCTimer = setTimeout(() => {
-      // Clear message line and show fresh prompt
-      // process.stdout.write('\r\x1b[2K');
+      // Clear old prompt line above, then clear message line and show fresh prompt
+      process.stdout.write('\x1b[1A\r\x1b[2K');
       ctrlCTimer = null;
       lastSigintTime = 0;
       rl.clearLine(0);
