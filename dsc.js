@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const readline = require('readline');
+const path = require('path');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { run } = require('./lib/chat.js');
@@ -85,10 +86,13 @@ function startRepl() {
 
   console.log('DSC — DeepSeek Code CLI  (Ctrl+C to exit)\n');
 
+  const dirName = path.basename(process.cwd());
+  const promptStr = `\x1b[1;34mDSC\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: '>>> ',
+    prompt: promptStr,
     // Don't close on Ctrl+D — we use it differently
   });
 
