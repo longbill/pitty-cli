@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
 const readline = require('readline');
+const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { run } = require('./lib/chat.js');
+
+logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(2), node: process.version });
 
 // ── CLI args ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -72,6 +73,7 @@ if (isInteractive) {
 function runAndExit(prompt) {
   run(prompt, { maxTurns: 15 })
     .catch(err => {
+      logger.logError('run', err);
       console.error('\nError:', err.message);
       process.exit(1);
     });
@@ -135,6 +137,7 @@ function startRepl() {
     try {
       messages = await run(trimmed, { messages, maxTurns: 15 });
     } catch (err) {
+      logger.logError('repl', err);
       console.error('\nError:', err.message);
     }
 
