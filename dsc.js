@@ -120,7 +120,9 @@ function startRepl() {
     lastSigintTime = now;
     if (ctrlCTimer) clearTimeout(ctrlCTimer);
 
-    process.stdout.write('\n\x1b[90m(再按一次 Ctrl+C 退出)\x1b[0m\n');
+    // Clear the input text on the line above (readline's newline moved cursor down)
+    process.stdout.write('\x1b[1A\x1b[K');
+    process.stdout.write('\x1b[90m(再按一次 Ctrl+C 退出)\x1b[0m\n');
 
     ctrlCTimer = setTimeout(() => {
       // Clear message line and blank line above
