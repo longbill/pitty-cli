@@ -129,7 +129,7 @@ function startRepl() {
       ctrlCTimer = null;
       lastSigintTime = 0;
       rl.prompt();
-      rl.write(null, { ctrl: true, name: 'u' });
+      rl.clearLine(0);
     }, 1000);
   }
 
