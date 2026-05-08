@@ -125,7 +125,7 @@ function startRepl() {
 
     ctrlCTimer = setTimeout(() => {
       // Clear message line and show fresh prompt
-      process.stdout.write('\r\x1b[2K');
+      // process.stdout.write('\r\x1b[2K');
       ctrlCTimer = null;
       lastSigintTime = 0;
       rl.clearLine(0);
