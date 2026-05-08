@@ -128,8 +128,8 @@ function startRepl() {
       process.stdout.write('\r\x1b[2K');
       ctrlCTimer = null;
       lastSigintTime = 0;
-      rl.prompt();
       rl.clearLine(0);
+      rl.prompt();
     }, 1000);
   }
 
