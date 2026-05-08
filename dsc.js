@@ -120,14 +120,13 @@ function startRepl() {
     lastSigintTime = now;
     if (ctrlCTimer) clearTimeout(ctrlCTimer);
 
-    // Go up one line and clear the prompt+text, then show message
-    process.stdout.write('\x1b[1A');                              // up to prompt line
-    process.stdout.write('\r\x1b[0J');                            // clear from start of line to end of screen
+    // Clear current line and show message
+    process.stdout.write('\r\x1b[2K');
     process.stdout.write('\x1b[90m(再按一次 Ctrl+C 退出)\x1b[0m\n');
 
     ctrlCTimer = setTimeout(() => {
-      // Clear everything and show fresh prompt
-      process.stdout.write('\x1b[1A\x1b[2K');                     // clear message line
+      // Clear message line and show fresh prompt
+      process.stdout.write('\x1b[1A\x1b[2K');
       ctrlCTimer = null;
       lastSigintTime = 0;
       rl.prompt();
