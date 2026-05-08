@@ -168,19 +168,9 @@ function startRepl() {
     lastUserInput = trimmed;
     beforeRun();
 
+    let result;
     try {
-      const result = await run(trimmed, { messages, maxTurns: 15 });
-      if (result.aborted) {
-        if (result.hasOutput) {
-          messages = result.messages;
-        } else {
-          messages = result.messages;
-          console.log('(已取消)');
-          rl.write(lastUserInput);
-        }
-      } else {
-        messages = result.messages;
-      }
+      result = await run(trimmed, { messages, maxTurns: 15 });
     } catch (err) {
       logger.logError('repl', err);
       console.error('\nError:', err.message);
@@ -188,6 +178,18 @@ function startRepl() {
 
     afterRun();
     rl.prompt();
+
+    if (result && result.aborted) {
+      if (result.hasOutput) {
+        messages = result.messages;
+      } else {
+        messages = result.messages;
+        console.log('(已取消)');
+        rl.write(lastUserInput);
+      }
+    } else if (result) {
+      messages = result.messages;
+    }
   });
 
   rl.prompt();
