@@ -192,11 +192,9 @@ function startRepl() {
     afterRun();
 
     if (result && result.aborted) {
-      if (result.hasOutput) {
-        messages = result.messages;
-      } else {
-        messages = result.messages;
-        process.stdout.write('\x1b[90m(已取消)\x1b[0m\n');
+      messages = result.messages;
+      process.stdout.write('\x1b[90m(已取消)\x1b[0m\n');
+      if (!result.hasOutput) {
         rl.prompt();
         rl.write(lastUserInput);
         return;
