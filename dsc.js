@@ -154,15 +154,25 @@ function startRepl() {
 
   let pendingLines = [];
 
+  function fixupLine(text) {
+    // Erase the \ (go up, clear line, rewrite without \)
+    process.stdout.write('\x1b[1A\r\x1b[K');
+    const prefix = pendingLines.length === 0 ? promptStr : '';
+    process.stdout.write(prefix + text + '\n');
+  }
+
   rl.on('line', async (line) => {
     // Multi-line continuation: line ending with \
     if (line.endsWith('\\') && pendingLines.length === 0 && !line.trim().startsWith('/')) {
+      fixupLine(line.slice(0, -1));
       pendingLines.push(line.slice(0, -1));
+      rl.setPrompt('');
       rl.prompt();
       return;
     }
     if (pendingLines.length > 0) {
       if (line.endsWith('\\')) {
+        fixupLine(line.slice(0, -1));
         pendingLines.push(line.slice(0, -1));
         rl.prompt();
         return;
@@ -170,6 +180,7 @@ function startRepl() {
       pendingLines.push(line);
       line = pendingLines.join('\n');
       pendingLines = [];
+      rl.setPrompt(promptStr);
     }
 
     const trimmed = line.trim();
