@@ -105,11 +105,17 @@ function startRepl() {
   const dirName = path.basename(process.cwd());
   const promptStr = `\x1b[1;34mpitty\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: promptStr,
-  });
+  let rl;
+
+  function createReadline() {
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      prompt: promptStr,
+    });
+    rl.on('SIGINT', handleSigint);
+    rl.on('line', handleLine);
+  }
 
   let ctrlCTimer = null;
 
@@ -140,24 +146,24 @@ function startRepl() {
     }, 1000);
   }
 
-  rl.on('SIGINT', handleSigint);
-
   let processSigint = null;
 
   function beforeRun() {
     running = true;
+    rl.close(); // prevent user from typing while running
     processSigint = () => handleSigint();
     process.on('SIGINT', processSigint);
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   }
 
   function afterRun() {
-    running = false;
     if (processSigint) {
       process.removeListener('SIGINT', processSigint);
       processSigint = null;
     }
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    createReadline();
+    running = false;
   }
 
   let pendingLines = [];
@@ -169,7 +175,8 @@ function startRepl() {
     process.stdout.write(prefix + text + '\n');
   }
 
-  rl.on('line', async (line) => {
+  async function handleLine(line) {
+    if (running) return; // safety guard: ignore input while a turn is in progress
     // Multi-line continuation: line ending with \
     if (line.endsWith('\\') && pendingLines.length === 0 && !line.trim().startsWith('/')) {
       fixupLine(line.slice(0, -1));
@@ -242,7 +249,8 @@ function startRepl() {
     }
 
     rl.prompt();
-  });
+  }
 
+  createReadline();
   rl.prompt();
 }
