@@ -241,7 +241,7 @@ function startRepl() {
 
     let result;
     try {
-      result = await run(trimmed, { messages, maxTurns: 15 });
+      result = await run(trimmed, { messages, maxTurns: 5 });
     } catch (err) {
       logger.logError('repl', err);
       console.error('\n\x1b[31mError: ' + err.message + '\x1b[0m');
