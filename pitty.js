@@ -147,16 +147,26 @@ function startRepl() {
   }
 
   let processSigint = null;
+  let stdinDrain = null;
 
   function beforeRun() {
     running = true;
-    rl.close(); // prevent user from typing while running
+    rl.close();
     processSigint = () => handleSigint();
     process.on('SIGINT', processSigint);
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      // Actively drain stdin so keystrokes don't accumulate in kernel buffer
+      stdinDrain = () => {};
+      process.stdin.on('data', stdinDrain);
+    }
   }
 
   function afterRun() {
+    if (stdinDrain) {
+      process.stdin.removeListener('data', stdinDrain);
+      stdinDrain = null;
+    }
     if (processSigint) {
       process.removeListener('SIGINT', processSigint);
       processSigint = null;
