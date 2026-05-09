@@ -160,7 +160,13 @@ function startRepl() {
       // Resume it and attach a drain handler so keystrokes
       // don't accumulate in the kernel/stream buffer.
       process.stdin.resume();
-      stdinDrain = () => {};
+      stdinDrain = (data) => {
+        // In raw mode, Ctrl+C sends \x03 instead of SIGINT
+        if (Buffer.isBuffer(data) && data.includes(3)) {
+          const ac = chat.currentAbort;
+          if (ac) ac.abort();
+        }
+      };
       process.stdin.on('data', stdinDrain);
     }
   }
