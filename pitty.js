@@ -248,7 +248,7 @@ function startRepl() {
     const now = new Date();
     const time = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}]`;
     const display = `\x1b[48;5;236m\x1b[38;5;208m${time}\x1b[0m\x1b[48;5;236m: ${trimmed}\x1b[0m`;
-    process.stdout.write(`\x1b[1A\r${display}\n`);
+    process.stdout.write(`\x1b[1A\r${display}\n\n`);
 
     beforeRun();
 
