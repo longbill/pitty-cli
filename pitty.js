@@ -153,7 +153,7 @@ function startRepl() {
     rl.close(); // prevent user from typing while running
     processSigint = () => handleSigint();
     process.on('SIGINT', processSigint);
-    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
   }
 
   function afterRun() {
