@@ -14,7 +14,7 @@ const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-DSC — DeepSeek Code CLI
+DSC — DeepSeek CLI
 
 Usage:
   dsc                      Start interactive REPL
@@ -92,7 +92,7 @@ function startRepl() {
   let lastUserInput = '';
   let lastSigintTime = 0;
 
-  console.log('DSC — DeepSeek Code CLI  (Ctrl+C to exit)\n');
+  console.log('DSC — DeepSeek CLI  (Ctrl+C to exit)\n');
 
   const dirName = path.basename(process.cwd());
   const promptStr = `\x1b[1;34mDSC\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
