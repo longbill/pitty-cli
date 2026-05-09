@@ -89,7 +89,7 @@ async function runAndExit(prompt) {
     process.exit(0);
   } catch (err) {
     logger.logError('run', err);
-    console.error('\nError:', err.message);
+    console.error('\n\x1b[31mError: ' + err.message + '\x1b[0m');
     process.exit(1);
   }
 }
@@ -224,7 +224,7 @@ function startRepl() {
       result = await run(trimmed, { messages, maxTurns: 15 });
     } catch (err) {
       logger.logError('repl', err);
-      console.error('\nError:', err.message);
+      console.error('\n\x1b[31mError: ' + err.message + '\x1b[0m');
     }
 
     afterRun();
