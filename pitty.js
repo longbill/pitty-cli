@@ -156,7 +156,10 @@ function startRepl() {
     process.on('SIGINT', processSigint);
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
-      // Actively drain stdin so keystrokes don't accumulate in kernel buffer
+      // rl.close() called input.pause(), so stdin is paused.
+      // Resume it and attach a drain handler so keystrokes
+      // don't accumulate in the kernel/stream buffer.
+      process.stdin.resume();
       stdinDrain = () => {};
       process.stdin.on('data', stdinDrain);
     }
