@@ -14,18 +14,18 @@ const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-DSC — DeepSeek CLI
+Pitty CLI
 
 Usage:
-  dsc                      Start interactive REPL
-  dsc "your prompt"        Run a single prompt
-  echo "prompt" | dsc      Pipe input
-  dsc --init               Create default ~/.dsc.json
-  dsc --system-prompt      Show the system prompt for current dir
-  dsc --help               Show this help
+  pitty                      Start interactive REPL
+  pitty "your prompt"        Run a single prompt
+  echo "prompt" | pitty      Pipe input
+  pitty --init               Create default ~/.pitty.json
+  pitty --system-prompt      Show the system prompt for current dir
+  pitty --help               Show this help
 
 Config: ${config.CONFIG_PATH}
-  - apiKey:    Your DeepSeek API key
+  - apiKey:    Your Pitty API key
   - baseUrl:   API base URL (default: https://api.deepseek.com)
   - model:     Model name (default: deepseek-chat)
   - maxTokens: Max tokens per response (default: 4096)
@@ -52,12 +52,12 @@ if (args.includes('--system-prompt') || args.includes('-sp')) {
 // ── Check API key ─────────────────────────────────────────────────────
 const cfg = config.load();
 if (!cfg.apiKey) {
-  cfg.apiKey = process.env.DEEPSEEK_API_KEY || '';
+  cfg.apiKey = process.env.PITTY_API_KEY || '';
   if (cfg.apiKey) config.save(cfg);
 }
 if (!cfg.apiKey) {
   console.error(`No API key found. Edit ${config.CONFIG_PATH} and set "apiKey".`);
-  console.error('Or set the DEEPSEEK_API_KEY environment variable.');
+  console.error('Or set the PITTY_API_KEY environment variable.');
   process.exit(1);
 }
 
@@ -100,10 +100,10 @@ function startRepl() {
   let lastUserInput = '';
   let lastSigintTime = 0;
 
-  console.log('DSC — DeepSeek CLI  (Ctrl+C to exit)\n');
+  console.log('Pitty CLI  (Ctrl+C to exit)\n');
 
   const dirName = path.basename(process.cwd());
-  const promptStr = `\x1b[1;34mDSC\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
+  const promptStr = `\x1b[1;34mpitty\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
 
   const rl = readline.createInterface({
     input: process.stdin,

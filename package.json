@@ -1,16 +1,16 @@
 {
-  "name": "dsc",
+  "name": "pitty",
   "version": "0.1.0",
-  "description": "DeepSeek Code CLI — AI coding assistant in your terminal",
-  "main": "dsc.js",
+  "description": "Pitty CLI — AI coding assistant in your terminal",
+  "main": "pitty.js",
   "bin": {
-    "dsc": "./dsc.js"
+    "pitty": "./pitty.js"
   },
   "scripts": {
-    "start": "node dsc.js",
+    "start": "node pitty.js",
     "test": "node -e \"require('./lib/config.js'); console.log('OK')\""
   },
-  "keywords": ["deepseek", "cli", "ai", "coding", "assistant"],
+  "keywords": ["pitty", "cli", "ai", "coding", "assistant"],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
