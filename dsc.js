@@ -21,6 +21,7 @@ Usage:
   dsc "your prompt"        Run a single prompt
   echo "prompt" | dsc      Pipe input
   dsc --init               Create default ~/.dsc.json
+  dsc --system-prompt      Show the system prompt for current dir
   dsc --help               Show this help
 
 Config: ${config.CONFIG_PATH}
@@ -38,6 +39,13 @@ if (args.includes('--init')) {
   config.save(cfg);
   console.log(`Config created at ${config.CONFIG_PATH}`);
   console.log('Edit it to add your API key.');
+  process.exit(0);
+}
+
+if (args.includes('--system-prompt') || args.includes('-sp')) {
+  const { buildSystemPrompt } = require('./lib/system.js');
+  const { getApiTools } = require('./lib/tools.js');
+  console.log(buildSystemPrompt(getApiTools()));
   process.exit(0);
 }
 
