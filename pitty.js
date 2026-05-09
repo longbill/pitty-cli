@@ -244,9 +244,11 @@ function startRepl() {
 
     lastUserInput = trimmed;
 
-    // Rewrite user input with gray background (fit to text)
-    const label = `pitty[${dirName}]: ${trimmed}`;
-    process.stdout.write(`\x1b[1A\r\x1b[48;5;236m${label}\x1b[0m\n`);
+    // Rewrite user input with gray background + timestamp
+    const now = new Date();
+    const time = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}]`;
+    const display = `\x1b[48;5;236m\x1b[38;5;208m${time}\x1b[0m\x1b[48;5;236m: ${trimmed}\x1b[0m`;
+    process.stdout.write(`\x1b[1A\r${display}\n`);
 
     beforeRun();
 
