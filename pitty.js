@@ -238,11 +238,9 @@ function startRepl() {
 
     lastUserInput = trimmed;
 
-    // Rewrite user input with full-width gray background
-    const cols = process.stdout.columns || 80;
+    // Rewrite user input with gray background (fit to text)
     const label = `pitty[${dirName}]: ${trimmed}`;
-    const pad = ' '.repeat(Math.max(0, cols - label.length));
-    process.stdout.write(`\x1b[1A\r\x1b[48;5;236m${label}${pad}\x1b[0m\n`);
+    process.stdout.write(`\x1b[1A\r\x1b[48;5;236m${label}\x1b[0m\n`);
 
     beforeRun();
 
