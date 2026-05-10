@@ -401,7 +401,7 @@ function startRepl() {
     // Display each segment: regular text vs paste content
     if (input !== expanded) {
       const MAX_DISPLAY_LINES = 50;
-      const regex = /\[Pasted text #(\d+) \+(\d+) lines\]/g;
+      const regex = /\[Pasted text #(\d+)(?:\s+\+(\d+) lines)?\]/g;
       let lastIdx = 0;
       let m;
       while ((m = regex.exec(input)) !== null) {
@@ -414,15 +414,21 @@ function startRepl() {
         const stored = pastedTexts[id];
         if (stored) {
           const pLines = stored.replace(/\n$/, '').split('\n');
-          const show = pLines.slice(0, MAX_DISPLAY_LINES);
-          process.stdout.write('\n\x1b[90m<paste-content>\x1b[0m\n');
-          for (const pl of show) {
-            process.stdout.write('\x1b[90m' + pl + '\x1b[0m\n');
+          if (pLines.length > 1) {
+            // Multi-line paste: show in a block
+            const show = pLines.slice(0, MAX_DISPLAY_LINES);
+            process.stdout.write('\n\x1b[90m<paste-content>\x1b[0m\n');
+            for (const pl of show) {
+              process.stdout.write('\x1b[90m' + pl + '\x1b[0m\n');
+            }
+            if (pLines.length > MAX_DISPLAY_LINES) {
+              process.stdout.write('\x1b[90m... (+' + (pLines.length - MAX_DISPLAY_LINES) + ' more lines)\x1b[0m\n');
+            }
+            process.stdout.write('\x1b[90m</paste-content>\x1b[0m');
+          } else {
+            // Single-line paste: show inline
+            process.stdout.write('\x1b[90m' + stored + '\x1b[0m');
           }
-          if (pLines.length > MAX_DISPLAY_LINES) {
-            process.stdout.write('\x1b[90m... (+' + (pLines.length - MAX_DISPLAY_LINES) + ' more lines)\x1b[0m\n');
-          }
-          process.stdout.write('\x1b[90m</paste-content>\x1b[0m');
         }
         lastIdx = regex.lastIndex;
       }
