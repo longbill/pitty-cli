@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const readline = require('readline');
 const path = require('path');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
+const { _, _fmt } = require('./lib/lang/index.js');
 const chat = require('./lib/chat.js');
 const { run } = chat;
 
@@ -13,32 +13,14 @@ logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(
 const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
-  console.log(`
-Pitty CLI
-
-Usage:
-  pitty                      Start interactive REPL
-  pitty "your prompt"        Run a single prompt
-  echo "prompt" | pitty      Pipe input
-  pitty --init               Create default ~/.pitty.json
-  pitty --system-prompt      Show the system prompt for current dir
-  pitty --help               Show this help
-
-Config: ${config.CONFIG_PATH}
-  - apiKey:    Your Pitty API key
-  - baseUrl:   API base URL (default: https://api.deepseek.com)
-  - model:     Model name (default: deepseek-chat)
-  - maxTokens: Max tokens per response (default: 4096)
-  - tools:     Object mapping tool names to true/false
-`);
+  console.log(_fmt('cli.help', { path: config.CONFIG_PATH }));
   process.exit(0);
 }
 
 if (args.includes('--init')) {
   const cfg = config.load();
   config.save(cfg);
-  console.log(`Config created at ${config.CONFIG_PATH}`);
-  console.log('Edit it to add your API key.');
+  console.log(_('cli.configInit', config.CONFIG_PATH));
   process.exit(0);
 }
 
@@ -56,8 +38,8 @@ if (!cfg.apiKey) {
   if (cfg.apiKey) config.save(cfg);
 }
 if (!cfg.apiKey) {
-  console.error(`No API key found. Edit ${config.CONFIG_PATH} and set "apiKey".`);
-  console.error('Or set the PITTY_API_KEY environment variable.');
+  console.error(_('cli.noApiKey', config.CONFIG_PATH));
+  console.error(_('cli.envHint'));
   process.exit(1);
 }
 
@@ -69,7 +51,6 @@ if (isInteractive) {
 } else if (args.length > 0) {
   runAndExit(args.join(' '));
 } else {
-  // Pipe mode
   const buffers = [];
   process.stdin.on('data', (d) => buffers.push(d));
   process.stdin.on('end', () => {
@@ -84,12 +65,12 @@ async function runAndExit(prompt) {
   try {
     const result = await run(prompt, { maxTurns: 15 });
     if (result.aborted) {
-      console.log('\n(已取消)');
+      console.log('\n' + _('cli.canceled'));
     }
     process.exit(0);
   } catch (err) {
     logger.logError('run', err);
-    console.error('\n\x1b[31mError: ' + err.message + '\x1b[0m');
+    console.error('\n\x1b[31m' + _('cli.errorPrefix') + err.message + '\x1b[0m');
     process.exit(1);
   }
 }
@@ -99,188 +80,377 @@ function startRepl() {
   let running = false;
   let lastUserInput = '';
   let lastSigintTime = 0;
-
-  console.log('Pitty CLI  (Ctrl+C to exit)\n');
+  let inputBuffer = '';
+  let cursorPos = 0;
+  let pasteActive = false;
+  let pasteCapture = '';
+  let pastedTexts = {};
+  let nextPasteId = 1;
 
   const dirName = path.basename(process.cwd());
-  const promptStr = `\x1b[1;34mpitty\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
+  const promptLabel = _('cli.promptLabel');
+  const promptStr = `\x1b[1;34m${promptLabel}\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
+  const promptWidth = (() => {
+    let w = 0;
+    for (const ch of promptLabel + '[' + dirName + ']: ') {
+      const c = ch.charCodeAt(0);
+      if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef)) w += 2;
+      else w += 1;
+    }
+    return w;
+  })();
 
-  let rl;
+  function strWidth(s) {
+    let w = 0;
+    for (const ch of s) {
+      const c = ch.charCodeAt(0);
+      if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef)) w += 2;
+      else w += 1;
+    }
+    return w;
+  }
 
-  function createReadline() {
-    rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      prompt: promptStr,
+  function showPrompt() {
+    process.stdout.write(promptStr);
+  }
+
+  function deleteForward() {
+    if (cursorPos >= inputBuffer.length) return;
+    inputBuffer = inputBuffer.slice(0, cursorPos) + inputBuffer.slice(cursorPos + 1);
+    const goUpRow = getVisualPos(cursorPos).row;
+    refreshLine(goUpRow);
+  }
+
+  // Get visual (row, col) of a buffer offset, accounting for \n
+  function getVisualPos(offset) {
+    const cols = process.stdout.columns || 80;
+    const text = inputBuffer.slice(0, offset);
+    const segments = text.split('\n');
+    let row = 0;
+    let col = promptWidth;
+    for (let i = 0; i < segments.length; i++) {
+      if (i > 0) { row++; col = 0; }
+      const effectiveEndCol = col + strWidth(segments[i]);
+      row += Math.floor(effectiveEndCol / cols);
+      col = effectiveEndCol % cols;
+    }
+    return { row, col };
+  }
+
+  // Redraw entire visible input from prompt line
+  function refreshLine(goUpRow) {
+    if (goUpRow > 0) process.stdout.write(`\x1b[${goUpRow}A`);
+    process.stdout.write('\r' + promptStr + inputBuffer);
+    // Erase any leftover content below the new text
+    process.stdout.write('\x1b[J');
+    const curPos = getVisualPos(cursorPos);
+    const endPos = getVisualPos(inputBuffer.length);
+    const rowDiff = endPos.row - curPos.row;
+    if (rowDiff > 0) process.stdout.write(`\x1b[${rowDiff}A`);
+    process.stdout.write(`\x1b[${curPos.col + 1}G`);
+  }
+
+  // Move cursor to a new position visually
+  function moveCursorTo(pos) {
+    const oldPos = getVisualPos(cursorPos);
+    const newPos = getVisualPos(pos);
+    if (newPos.row < oldPos.row) {
+      process.stdout.write(`\x1b[${oldPos.row - newPos.row}A`);
+      process.stdout.write(`\x1b[${newPos.col + 1}G`);
+    } else if (newPos.row > oldPos.row) {
+      process.stdout.write(`\x1b[${newPos.row - oldPos.row}B`);
+      process.stdout.write(`\x1b[${newPos.col + 1}G`);
+    } else {
+      if (newPos.col > oldPos.col) process.stdout.write(`\x1b[${newPos.col - oldPos.col}C`);
+      else if (newPos.col < oldPos.col) process.stdout.write(`\x1b[${oldPos.col - newPos.col}D`);
+    }
+    cursorPos = pos;
+  }
+
+  // Enable bracketed paste mode
+  process.stdout.write('\x1b[?2004h');
+  process.on('exit', () => { process.stdout.write('\x1b[?2004l'); });
+
+  function expandPastedTexts(input) {
+    return input.replace(/\[Pasted text #(\d+) \+(\d+) lines\]/g, (match, id) => {
+      return pastedTexts[id] !== undefined ? pastedTexts[id] : match;
     });
-    rl.on('SIGINT', handleSigint);
-    rl.on('line', handleLine);
   }
 
-  let ctrlCTimer = null;
+  function handlePasteEnd() {
+    const content = pasteCapture.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (!content.trim()) return;
 
-  function handleSigint() {
+    const lines = content.replace(/\n$/, '').split('\n');
+
+    if (lines.length > 1) {
+      const id = nextPasteId++;
+      pastedTexts[id] = content;
+      const placeholder = `[Pasted text #${id} +${lines.length} lines]`;
+      const oldPos = cursorPos;
+      inputBuffer = inputBuffer.slice(0, oldPos) + placeholder + inputBuffer.slice(oldPos);
+      cursorPos = oldPos;
+      refreshLine(getVisualPos(cursorPos).row);
+      moveCursorTo(oldPos + placeholder.length);
+    } else {
+      const text = content.trim();
+      const oldPos = cursorPos;
+      inputBuffer = inputBuffer.slice(0, oldPos) + text + inputBuffer.slice(oldPos);
+      cursorPos = oldPos;
+      refreshLine(getVisualPos(cursorPos).row);
+      moveCursorTo(oldPos + text.length);
+    }
+  }
+
+  function showTimestamp() {
+    const now = new Date();
+    const time = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}]`;
+    process.stdout.write('\x1b[90m' + time + '\x1b[0m\n');
+  }
+
+  // ── Raw input handling ──────────────────────────────────────────────
+
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  showPrompt();
+
+  process.stdin.on('data', (chunk) => {
     if (running) {
-      const ac = chat.currentAbort;
-      if (ac) ac.abort();
-      return;
-    }
-    const now = Date.now();
-    if (now - lastSigintTime < 1000) {
-      if (ctrlCTimer) { clearTimeout(ctrlCTimer); ctrlCTimer = null; }
-      console.log('\nBye!');
-      process.exit(0);
-    }
-    lastSigintTime = now;
-    if (ctrlCTimer) clearTimeout(ctrlCTimer);
-
-    // New line with message, no trailing newline
-    process.stdout.write('\n\x1b[90m(再按一次 Ctrl+C 退出)\x1b[0m');
-
-    ctrlCTimer = setTimeout(() => {
-      process.stdout.write('\x1b[1A');
-      ctrlCTimer = null;
-      lastSigintTime = 0;
-      rl.clearLine(0);
-      rl.prompt();
-    }, 1000);
-  }
-
-  let processSigint = null;
-  let stdinDrain = null;
-
-  function beforeRun() {
-    running = true;
-    rl.close();
-    processSigint = () => handleSigint();
-    process.on('SIGINT', processSigint);
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-      // rl.close() called input.pause(), so stdin is paused.
-      // Resume it and attach a drain handler so keystrokes
-      // don't accumulate in the kernel/stream buffer.
-      process.stdin.resume();
-      stdinDrain = (data) => {
-        // In raw mode, Ctrl+C sends \x03 instead of SIGINT
-        if (Buffer.isBuffer(data) && data.includes(3)) {
-          const ac = chat.currentAbort;
-          if (ac) ac.abort();
-        }
-      };
-      process.stdin.on('data', stdinDrain);
-    }
-  }
-
-  function afterRun() {
-    if (stdinDrain) {
-      process.stdin.removeListener('data', stdinDrain);
-      stdinDrain = null;
-    }
-    if (processSigint) {
-      process.removeListener('SIGINT', processSigint);
-      processSigint = null;
-    }
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    createReadline();
-    running = false;
-  }
-
-  let pendingLines = [];
-
-  function fixupLine(text) {
-    // Erase the \ (go up, clear line, rewrite without \)
-    process.stdout.write('\x1b[1A\r\x1b[K');
-    const prefix = pendingLines.length === 0 ? promptStr : '';
-    process.stdout.write(prefix + text + '\n');
-  }
-
-  async function handleLine(line) {
-    if (running) return; // safety guard: ignore input while a turn is in progress
-    // Multi-line continuation: line ending with \
-    if (line.endsWith('\\') && pendingLines.length === 0 && !line.trim().startsWith('/')) {
-      fixupLine(line.slice(0, -1));
-      pendingLines.push(line.slice(0, -1));
-      rl.setPrompt('');
-      rl.prompt();
-      return;
-    }
-    if (pendingLines.length > 0) {
-      if (line.endsWith('\\')) {
-        fixupLine(line.slice(0, -1));
-        pendingLines.push(line.slice(0, -1));
-        rl.prompt();
-        return;
+      // During AI processing, only check for Ctrl+C
+      if (Buffer.isBuffer(chunk) && chunk.includes(3)) {
+        const ac = chat.currentAbort;
+        if (ac) ac.abort();
       }
-      pendingLines.push(line);
-      line = pendingLines.join('\n');
-      pendingLines = [];
-      rl.setPrompt(promptStr);
-    }
-
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      rl.prompt();
       return;
     }
+
+    const str = chunk.toString('utf-8');
+
+    for (let i = 0; i < str.length; i++) {
+      // Bracketed paste start
+      if (str[i] === '\x1b' && str.slice(i, i + 6) === '\x1b[200~') {
+        pasteActive = true;
+        pasteCapture = '';
+        i += 5;
+        continue;
+      }
+
+      // Bracketed paste end — show placeholder with captured content
+      if (str[i] === '\x1b' && str.slice(i, i + 6) === '\x1b[201~') {
+        pasteActive = false;
+        i += 5;
+        handlePasteEnd();
+        continue;
+      }
+
+      // Capture paste characters silently (don't echo)
+      if (pasteActive) {
+        pasteCapture += str[i];
+        continue;
+      }
+
+      // Escape sequences: arrow keys, home, end
+      if (str[i] === '\x1b') {
+        const seq = str.slice(i + 1, i + 3);
+        if (seq === '[A') { i += 2; continue; } // Up - ignore
+        if (seq === '[B') { i += 2; continue; } // Down - ignore
+        if (seq === '[D') { i += 2; if (cursorPos > 0) moveCursorTo(cursorPos - 1); continue; } // Left
+        if (seq === '[C') { i += 2; if (cursorPos < inputBuffer.length) moveCursorTo(cursorPos + 1); continue; } // Right
+        if (seq === '[H') { i += 2; moveCursorTo(0); continue; } // Home
+        if (seq === '[F') { i += 2; moveCursorTo(inputBuffer.length); continue; } // End
+        if (seq === '[1' && str[i + 3] === '~') { i += 3; moveCursorTo(0); continue; } // Home (xterm)
+        if (seq === '[4' && str[i + 3] === '~') { i += 3; moveCursorTo(inputBuffer.length); continue; } // End (xterm)
+        if (seq === '[3' && str[i + 3] === '~') { i += 3; deleteForward(); continue; } // Delete
+        // Unknown escape: skip it
+        i += 2;
+        continue;
+      }
+
+      // Normal input mode
+      if (str[i] === '\x03') {
+        const now = Date.now();
+        if (now - lastSigintTime < 1000) {
+          console.log('\n' + _('cli.bye'));
+          process.exit(0);
+        }
+        lastSigintTime = now;
+        process.stdout.write('\n\x1b[90m' + _('cli.exitHint') + '\x1b[0m');
+        setTimeout(() => {
+          process.stdout.write('\x1b[1A\r\x1b[K');
+          lastSigintTime = 0;
+          showPrompt();
+        }, 1000);
+        continue;
+      }
+
+      if (str[i] === '\r') {
+        // Enter: submit
+        process.stdout.write('\r\n');
+        const line = inputBuffer;
+        inputBuffer = '';
+        cursorPos = 0;
+        handleInput(line);
+        continue;
+      }
+
+      if (str[i] === '\n') {
+        process.stdout.write('\r\n');
+        inputBuffer += '\n';
+        cursorPos = inputBuffer.length;
+        continue;
+      }
+
+      if (str[i] === '\x7f' || str[i] === '\b') {
+        if (cursorPos > 0) {
+          // Check if cursor is right after a paste placeholder — delete it whole
+          const placeholderRegex = /\[Pasted text #(\d+) \+(\d+) lines\]/g;
+          let pm, placeholderDeleted = false;
+          while ((pm = placeholderRegex.exec(inputBuffer)) !== null) {
+            if (cursorPos === pm.index + pm[0].length) {
+              const oldPos = getVisualPos(cursorPos);
+              const start = pm.index;
+              inputBuffer = inputBuffer.slice(0, start) + inputBuffer.slice(cursorPos);
+              cursorPos = start;
+              delete pastedTexts[pm[1]];
+              refreshLine(oldPos.row);
+              placeholderDeleted = true;
+              break;
+            }
+          }
+          if (placeholderDeleted) continue;
+
+          const oldPos = getVisualPos(cursorPos);
+          const w = strWidth(inputBuffer[cursorPos - 1]);
+
+          inputBuffer = inputBuffer.slice(0, cursorPos - 1) + inputBuffer.slice(cursorPos);
+          cursorPos--;
+          const atEnd = cursorPos === inputBuffer.length;
+
+          if (atEnd) {
+            const afterPos = getVisualPos(inputBuffer.length);
+            if (oldPos.row !== afterPos.row) {
+              refreshLine(oldPos.row);
+            } else {
+              process.stdout.write(`\x1b[${w}D${' '.repeat(w)}\x1b[${w}D`);
+            }
+          } else {
+            refreshLine(oldPos.row);
+          }
+        }
+        continue;
+      }
+
+      // Regular character
+      {
+        const wasAtEnd = cursorPos === inputBuffer.length;
+        inputBuffer = inputBuffer.slice(0, cursorPos) + str[i] + inputBuffer.slice(cursorPos);
+        if (wasAtEnd) {
+          process.stdout.write(str[i]);
+          cursorPos++;
+        } else {
+          refreshLine(getVisualPos(cursorPos).row);
+          moveCursorTo(cursorPos + 1);
+        }
+      }
+    }
+  });
+
+  // ── Input processing ───────────────────────────────────────────────
+
+  async function handleInput(input) {
+    const expanded = expandPastedTexts(input);
+    const trimmed = expanded.trim();
+    if (!trimmed) { showPrompt(); return; }
 
     if (trimmed === '/clear' || trimmed === '/c') {
       messages = [];
-      console.log('(Conversation cleared)');
-      rl.prompt();
+      console.log(_('cli.clearDone'));
+      showPrompt();
       return;
     }
 
     if (trimmed === '/exit' || trimmed === '/q') {
-      console.log('Bye!');
+      console.log(_('cli.bye'));
       process.exit(0);
     }
 
     if (trimmed === '/help' || trimmed === '/h') {
-      console.log('Commands:  /clear /c  Clear  |  /exit /q  Quit  |  /help /h  This');
-      rl.prompt();
+      console.log(_('cli.cmdHelp'));
+      showPrompt();
       return;
     }
 
-    lastUserInput = trimmed;
+    lastUserInput = input;
 
-    // Rewrite user input with gray background + timestamp
-    const now = new Date();
-    const time = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}]`;
-    const display = `\x1b[48;5;236m\x1b[38;5;40m${time}\x1b[0m\x1b[48;5;236m: ${trimmed}\x1b[0m`;
-    // Go up to first input line and clear to end of screen
-    const visiblePrompt = `pitty[${dirName}]: `;
-    const cols = process.stdout.columns || 80;
-    const inputLines = Math.max(1, Math.ceil((visiblePrompt.length + trimmed.length) / cols));
-    process.stdout.write(`\x1b[${inputLines}A\r\x1b[J${display}\n\n`);
+    // If placeholder was expanded, show the real content in gray before timestamp
+    // Display each segment: regular text vs paste content
+    if (input !== expanded) {
+      const MAX_DISPLAY_LINES = 50;
+      const regex = /\[Pasted text #(\d+) \+(\d+) lines\]/g;
+      let lastIdx = 0;
+      let m;
+      while ((m = regex.exec(input)) !== null) {
+        // Text before this placeholder
+        if (m.index > lastIdx) {
+          process.stdout.write('\x1b[90m' + input.slice(lastIdx, m.index) + '\x1b[0m');
+        }
+        // Paste content block
+        const id = m[1];
+        const stored = pastedTexts[id];
+        if (stored) {
+          const pLines = stored.replace(/\n$/, '').split('\n');
+          const show = pLines.slice(0, MAX_DISPLAY_LINES);
+          process.stdout.write('\n\x1b[90m<paste-content>\x1b[0m\n');
+          for (const pl of show) {
+            process.stdout.write('\x1b[90m' + pl + '\x1b[0m\n');
+          }
+          if (pLines.length > MAX_DISPLAY_LINES) {
+            process.stdout.write('\x1b[90m... (+' + (pLines.length - MAX_DISPLAY_LINES) + ' more lines)\x1b[0m\n');
+          }
+          process.stdout.write('\x1b[90m</paste-content>\x1b[0m');
+        }
+        lastIdx = regex.lastIndex;
+      }
+      // Remaining text after last placeholder
+      if (lastIdx < input.length) {
+        process.stdout.write('\n\x1b[90m' + input.slice(lastIdx) + '\x1b[0m');
+      }
+      process.stdout.write('\n');
+    }
 
-    beforeRun();
+    showTimestamp();
+
+    running = true;
+    const sigintHandler = () => {
+      const ac = chat.currentAbort;
+      if (ac) ac.abort();
+    };
+    process.on('SIGINT', sigintHandler);
 
     let result;
     try {
       result = await run(trimmed, { messages, maxTurns: cfg.maxTurns || 15 });
     } catch (err) {
       logger.logError('repl', err);
-      console.error('\n\x1b[31mError: ' + err.message + '\x1b[0m');
+      console.error('\n\x1b[31m' + _('cli.errorPrefix') + err.message + '\x1b[0m');
     }
 
-    afterRun();
+    process.removeListener('SIGINT', sigintHandler);
+    running = false;
 
     if (result && result.aborted) {
       messages = result.messages;
-      process.stdout.write('\x1b[90m(已取消)\x1b[0m\n');
+      process.stdout.write('\x1b[90m' + _('cli.canceled') + '\x1b[0m\n');
       if (!result.hasOutput) {
-        rl.prompt();
-        rl.write(lastUserInput);
+        inputBuffer = lastUserInput;
+        cursorPos = inputBuffer.length;
+        process.stdout.write(promptStr + inputBuffer);
         return;
       }
     } else if (result) {
       messages = result.messages;
     }
 
-    rl.prompt();
+    showPrompt();
   }
-
-  createReadline();
-  rl.prompt();
 }
