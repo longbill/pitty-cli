@@ -172,7 +172,7 @@ function startRepl() {
   process.on('exit', () => { process.stdout.write('\x1b[?2004l'); });
 
   function expandPastedTexts(input) {
-    return input.replace(/\[Pasted text #(\d+) \+(\d+) lines\]/g, (match, id) => {
+    return input.replace(/\[Pasted text #(\d+)(?:\s+\+(\d+) lines)?\]/g, (match, id) => {
       return pastedTexts[id] !== undefined ? pastedTexts[id] : match;
     });
   }
