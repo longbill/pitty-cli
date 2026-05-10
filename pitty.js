@@ -182,8 +182,14 @@ function startRepl() {
     if (!content.trim()) return;
 
     const lines = content.replace(/\n$/, '').split('\n');
+    const text = content.trim();
 
-    if (lines.length > 1) {
+    // Use placeholder if pasted text is multi-line, or if the first line would exceed terminal width
+    const combinedFirstLine = (inputBuffer.slice(0, cursorPos) + text + inputBuffer.slice(cursorPos)).split('\n')[0];
+    const cols = process.stdout.columns || 80;
+    const needsPlaceholder = lines.length > 1 || (promptWidth + strWidth(combinedFirstLine) > cols);
+
+    if (needsPlaceholder && lines.length > 1) {
       const id = nextPasteId++;
       pastedTexts[id] = content;
       const placeholder = `[Pasted text #${id} +${lines.length} lines]`;
@@ -192,8 +198,17 @@ function startRepl() {
       cursorPos = oldPos;
       refreshLine(getVisualPos(cursorPos).row);
       moveCursorTo(oldPos + placeholder.length);
+    } else if (needsPlaceholder) {
+      // Single-line but exceeds width - wrap in placeholder
+      const id = nextPasteId++;
+      pastedTexts[id] = content;
+      const placeholder = `[Pasted text #${id}]`;
+      const oldPos = cursorPos;
+      inputBuffer = inputBuffer.slice(0, oldPos) + placeholder + inputBuffer.slice(oldPos);
+      cursorPos = oldPos;
+      refreshLine(getVisualPos(cursorPos).row);
+      moveCursorTo(oldPos + placeholder.length);
     } else {
-      const text = content.trim();
       const oldPos = cursorPos;
       inputBuffer = inputBuffer.slice(0, oldPos) + text + inputBuffer.slice(oldPos);
       cursorPos = oldPos;
