@@ -318,7 +318,7 @@ function startRepl() {
       if (str[i] === '\x7f' || str[i] === '\b') {
         if (cursorPos > 0) {
           // Check if cursor is right after a paste placeholder — delete it whole
-          const placeholderRegex = /\[Pasted text #(\d+) \+(\d+) lines\]/g;
+          const placeholderRegex = /\[Pasted text #(\d+)(?:\s+\+(\d+) lines)?\]/g;
           let pm, placeholderDeleted = false;
           while ((pm = placeholderRegex.exec(inputBuffer)) !== null) {
             if (cursorPos === pm.index + pm[0].length) {
