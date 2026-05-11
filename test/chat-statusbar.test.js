@@ -102,4 +102,50 @@ describe('chat status bar', () => {
       config.getPermissionMode = originalGetPermissionMode;
     }
   });
+
+  it('returns denied tool result with user input from confirmation', async () => {
+    const originalChat = api.chat;
+    const originalGetPermissionMode = config.getPermissionMode;
+    config.getPermissionMode = () => 'ask';
+
+    let calls = 0;
+    api.chat = async (messages, tools, onDelta) => {
+      calls++;
+      if (calls === 1) {
+        return {
+          content: '',
+          reasoning: '',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) },
+          }],
+          usage: null,
+        };
+      }
+
+      const toolMessage = messages.find(m => m.role === 'tool' && m.tool_call_id === 'call_1');
+      onDelta(toolMessage.content, true);
+      return {
+        content: toolMessage.content,
+        reasoning: '',
+        toolCalls: [],
+        usage: null,
+      };
+    };
+    const chat = reloadChat();
+
+    try {
+      const { output } = await captureStdout(() => chat.run('hi', {
+        maxTurns: 2,
+        confirm: async () => ({ ok: false, userInput: '请改用 npm test' }),
+      }));
+
+      assert.ok(output.includes('用户拒绝执行'));
+      assert.ok(output.includes('请改用 npm test'));
+    } finally {
+      api.chat = originalChat;
+      config.getPermissionMode = originalGetPermissionMode;
+    }
+  });
 });

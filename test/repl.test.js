@@ -7,7 +7,7 @@ const { createHistory } = require('../lib/inputHistory.js');
 describe('REPL stdin handling', () => {
   it('resumes stdin after tool confirmation closes readline', () => {
     const source = fs.readFileSync(path.join(__dirname, '../lib/repl.js'), 'utf-8');
-    const finishStart = source.indexOf('const finish = (ok) => {');
+    const finishStart = source.indexOf('const finish = (answer) => {');
     const finishEnd = source.indexOf('};\n    const onAbort', finishStart);
     const finishBody = source.slice(finishStart, finishEnd);
 

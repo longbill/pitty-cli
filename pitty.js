@@ -55,8 +55,8 @@ if (!mainModel || !mainModel.apiKey) {
 function makeConfirmFn() {
   return (desc, signal) => new Promise((resolve) => {
     if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
-      console.log(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`);
-      resolve(false);
+      console.log(`\x1b[33m${_('cli.confirmPrefix')}\n${desc}\n按回车确认，输入任何内容拒绝 \x1b[0m`);
+      resolve({ ok: false, userInput: '' });
       return;
     }
 
@@ -69,21 +69,20 @@ function makeConfirmFn() {
     });
 
     let finished = false;
-    const finish = (ok) => {
+    const finish = (answer) => {
       if (finished) return;
       finished = true;
       signal?.removeEventListener('abort', onAbort);
       rl.close();
       process.stdin.setRawMode(true);
       process.stdin.resume();
-      resolve(ok);
+      const userInput = String(answer || '').trim();
+      resolve({ ok: userInput === '', userInput });
     };
-    const onAbort = () => finish(false);
+    const onAbort = () => finish('');
     signal?.addEventListener('abort', onAbort, { once: true });
 
-    rl.question(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`, (answer) => {
-      finish(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
-    });
+    rl.question(`\x1b[33m${_('cli.confirmPrefix')}\n${desc}\n按回车确认，输入任何内容拒绝 \x1b[0m`, finish);
   });
 }
 
