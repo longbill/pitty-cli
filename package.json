@@ -10,11 +10,20 @@
     "start": "node pitty.js",
     "test": "node -e \"require('./lib/config.js'); console.log('OK')\""
   },
-  "keywords": ["pitty", "cli", "ai", "coding", "assistant"],
+  "keywords": [
+    "pitty",
+    "cli",
+    "ai",
+    "coding",
+    "assistant"
+  ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "string-width": "^8.2.1"
   }
 }
