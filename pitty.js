@@ -31,6 +31,15 @@ if (args.includes('--system-prompt') || args.includes('-sp')) {
   process.exit(0);
 }
 
+// ── Permission mode override via CLI ──────────────────────────────────
+const MODE_FLAGS = ['--accept-all', '--read-only', '--ask', '--audit', '--none'];
+for (const flag of MODE_FLAGS) {
+  if (args.includes(flag)) {
+    config.setPermissionOverride(flag.slice(2)); // remove "--" prefix
+    break;
+  }
+}
+
 // ── Check configuration ───────────────────────────────────────────────
 const mainModel = config.resolveModel(config.getMainModel());
 if (!mainModel || !mainModel.apiKey) {
