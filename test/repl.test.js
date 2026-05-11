@@ -16,6 +16,18 @@ describe('REPL stdin handling', () => {
     assert.ok(finishBody.includes('rl.close();'));
     assert.ok(finishBody.includes('process.stdin.resume();'));
   });
+
+  it('removes the REPL data handler while shell command owns stdin', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../lib/repl.js'), 'utf-8');
+    const start = source.indexOf('function detachInputHandler()');
+    const end = source.indexOf('async function handleInput(input)', start);
+    const shellHandling = source.slice(start, end);
+
+    assert.notEqual(start, -1);
+    assert.notEqual(end, -1);
+    assert.ok(shellHandling.includes("process.stdin.removeListener('data', onData);"));
+    assert.ok(shellHandling.includes("process.stdin.on('data', onData);"));
+  });
 });
 
 describe('REPL input history', () => {
