@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const readline = require('readline');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { _, _fmt } = require('./lib/lang/index.js');
@@ -30,16 +31,33 @@ if (args.includes('--system-prompt') || args.includes('-sp')) {
   process.exit(0);
 }
 
-// ── Check API key ─────────────────────────────────────────────────────
-const cfg = config.load();
-if (!cfg.apiKey) {
-  cfg.apiKey = process.env.PITTY_API_KEY || '';
-  if (cfg.apiKey) config.save(cfg);
-}
-if (!cfg.apiKey) {
+// ── Check configuration ───────────────────────────────────────────────
+const mainModel = config.resolveModel(config.getMainModel());
+if (!mainModel || !mainModel.apiKey) {
   console.error(_('cli.noApiKey', config.CONFIG_PATH));
   console.error(_('cli.envHint'));
   process.exit(1);
+}
+
+// ── Tool confirmation helper ──────────────────────────────────────────
+
+function makeConfirmFn() {
+  return (desc) => new Promise((resolve) => {
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    rl.question(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`, (answer) => {
+      rl.close();
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────
@@ -61,7 +79,7 @@ if (isInteractive) {
 
 async function runAndExit(prompt) {
   try {
-    const result = await run(prompt);
+    const result = await run(prompt, { confirm: makeConfirmFn() });
     if (result.aborted) {
       console.log('\n' + _('cli.canceled'));
     }
