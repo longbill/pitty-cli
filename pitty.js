@@ -55,7 +55,7 @@ if (!mainModel || !mainModel.apiKey) {
 function makeConfirmFn() {
   return (desc, signal) => new Promise((resolve) => {
     if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
-      console.log(`\x1b[33m${_('cli.confirmPrefix')}\n${desc}\n按回车确认，输入任何内容拒绝 \x1b[0m`);
+      console.log(`\x1b[33m${desc}\x1b[0m`);
       resolve({ ok: false, userInput: '' });
       return;
     }
@@ -82,7 +82,7 @@ function makeConfirmFn() {
     const onAbort = () => finish('');
     signal?.addEventListener('abort', onAbort, { once: true });
 
-    rl.question(`\x1b[33m${_('cli.confirmPrefix')}\n${desc}\n按回车确认，输入任何内容拒绝 \x1b[0m`, finish);
+    rl.question(`\x1b[33m${desc}\x1b[0m`, finish);
   });
 }
 
