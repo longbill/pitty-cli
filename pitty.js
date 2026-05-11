@@ -106,7 +106,7 @@ if (isInteractive) {
 
 async function runAndExit(prompt) {
   try {
-    const result = await run(prompt, { confirm: makeConfirmFn() });
+    const result = await run(prompt, { confirm: makeConfirmFn(), statusBar: false });
     if (result.aborted) {
       console.log('\n' + _('cli.canceled'));
     }
