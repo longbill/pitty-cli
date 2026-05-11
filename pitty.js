@@ -4,6 +4,7 @@ const path = require('path');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { _, _fmt } = require('./lib/lang/index.js');
+const { strlen } = require('./lib/width.js');
 const chat = require('./lib/chat.js');
 const { run } = chat;
 
@@ -63,7 +64,7 @@ if (isInteractive) {
 
 async function runAndExit(prompt) {
   try {
-    const result = await run(prompt, { maxTurns: 15 });
+    const result = await run(prompt);
     if (result.aborted) {
       console.log('\n' + _('cli.canceled'));
     }
@@ -90,25 +91,7 @@ function startRepl() {
   const dirName = path.basename(process.cwd());
   const promptLabel = _('cli.promptLabel');
   const promptStr = `\x1b[1;34m${promptLabel}\x1b[0m[\x1b[1;33m${dirName}\x1b[0m]: `;
-  const promptWidth = (() => {
-    let w = 0;
-    for (const ch of promptLabel + '[' + dirName + ']: ') {
-      const c = ch.charCodeAt(0);
-      if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef)) w += 2;
-      else w += 1;
-    }
-    return w;
-  })();
-
-  function strWidth(s) {
-    let w = 0;
-    for (const ch of s) {
-      const c = ch.charCodeAt(0);
-      if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef)) w += 2;
-      else w += 1;
-    }
-    return w;
-  }
+  const promptWidth = strlen(promptLabel + '[' + dirName + ']: ');
 
   function showPrompt() {
     process.stdout.write(promptStr);
@@ -130,7 +113,7 @@ function startRepl() {
     let col = promptWidth;
     for (let i = 0; i < segments.length; i++) {
       if (i > 0) { row++; col = 0; }
-      const effectiveEndCol = col + strWidth(segments[i]);
+      const effectiveEndCol = col + strlen(segments[i]);
       row += Math.floor(effectiveEndCol / cols);
       col = effectiveEndCol % cols;
     }
@@ -187,7 +170,7 @@ function startRepl() {
     // Use placeholder if pasted text is multi-line, or if the first line would exceed terminal width
     const combinedFirstLine = (inputBuffer.slice(0, cursorPos) + text + inputBuffer.slice(cursorPos)).split('\n')[0];
     const cols = process.stdout.columns || 80;
-    const needsPlaceholder = lines.length > 1 || (promptWidth + strWidth(combinedFirstLine) > cols);
+    const needsPlaceholder = lines.length > 1 || (promptWidth + strlen(combinedFirstLine) > cols);
 
     if (needsPlaceholder && lines.length > 1) {
       const id = nextPasteId++;
@@ -335,7 +318,7 @@ function startRepl() {
           if (placeholderDeleted) continue;
 
           const oldPos = getVisualPos(cursorPos);
-          const w = strWidth(inputBuffer[cursorPos - 1]);
+          const w = strlen(inputBuffer[cursorPos - 1]);
 
           inputBuffer = inputBuffer.slice(0, cursorPos - 1) + inputBuffer.slice(cursorPos);
           cursorPos--;
@@ -444,7 +427,7 @@ function startRepl() {
 
     let result;
     try {
-      result = await run(trimmed, { messages, maxTurns: cfg.maxTurns || 15 });
+      result = await run(trimmed, { messages, maxTurns: cfg.maxTurns });
     } catch (err) {
       logger.logError('repl', err);
       console.error('\n\x1b[31m' + _('cli.errorPrefix') + err.message + '\x1b[0m');
