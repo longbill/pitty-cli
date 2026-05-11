@@ -34,8 +34,10 @@ if (args.includes('--system-prompt') || args.includes('-sp')) {
 // ── Permission mode override via CLI ──────────────────────────────────
 const MODE_FLAGS = ['--accept-all', '--read-only', '--ask', '--audit', '--none'];
 for (const flag of MODE_FLAGS) {
-  if (args.includes(flag)) {
+  const idx = args.indexOf(flag);
+  if (idx !== -1) {
     config.setPermissionOverride(flag.slice(2)); // remove "--" prefix
+    args.splice(idx, 1);
     break;
   }
 }
