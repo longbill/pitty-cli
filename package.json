@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node pitty.js",
-    "test": "node -e \"require('./lib/config.js'); console.log('OK')\""
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "pitty",
