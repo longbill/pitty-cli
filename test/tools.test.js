@@ -304,6 +304,14 @@ describe('Bash', () => {
     assert.ok(res.stdout.trim().endsWith('/tmp') || res.stdout.trim() === '/tmp');
   });
 
+  it('closes stdin for commands that wait for input', async () => {
+    const start = Date.now();
+    const res = await bashTool.execute({ command: 'cat', timeout: 1000 });
+    assert.equal(res.exitCode, 0);
+    assert.equal(res.stdout, '');
+    assert.ok(Date.now() - start < 500, 'cat should exit promptly when stdin is closed');
+  });
+
   it('handles timeout', async () => {
     const res = await bashTool.execute({ command: 'sleep 10', timeout: 100 });
     assert.equal(res.exitCode, null); // killed, no exit code

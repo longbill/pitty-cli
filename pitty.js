@@ -53,7 +53,13 @@ if (!mainModel || !mainModel.apiKey) {
 // ── Tool confirmation helper ──────────────────────────────────────────
 
 function makeConfirmFn() {
-  return (desc) => new Promise((resolve) => {
+  return (desc, signal) => new Promise((resolve) => {
+    if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
+      console.log(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`);
+      resolve(false);
+      return;
+    }
+
     process.stdin.setRawMode(false);
     process.stdin.pause();
 
@@ -62,11 +68,21 @@ function makeConfirmFn() {
       output: process.stdout,
     });
 
-    rl.question(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`, (answer) => {
+    let finished = false;
+    const finish = (ok) => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener('abort', onAbort);
       rl.close();
       process.stdin.setRawMode(true);
       process.stdin.resume();
-      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+      resolve(ok);
+    };
+    const onAbort = () => finish(false);
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    rl.question(`\x1b[33m${_('cli.confirmPrefix')} ${desc} [y/N] \x1b[0m`, (answer) => {
+      finish(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
     });
   });
 }
