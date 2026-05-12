@@ -11,6 +11,10 @@ const readTool = require('../lib/tools/read.js');
 const writeTool = require('../lib/tools/write.js');
 const editTool = require('../lib/tools/edit.js');
 const bashTool = require('../lib/tools/bash.js');
+const backgroundCreateTool = require('../lib/tools/backgroundCreate.js');
+const backgroundListTool = require('../lib/tools/backgroundList.js');
+const backgroundReadTool = require('../lib/tools/backgroundRead.js');
+const backgroundStopTool = require('../lib/tools/backgroundStop.js');
 const backgroundTasks = require('../lib/backgroundTasks.js');
 const grepTool = require('../lib/tools/grep.js');
 const { executeToolCall } = require('../lib/tools.js');
@@ -338,7 +342,47 @@ describe('Bash', () => {
 
 });
 
-// ── Grep ───────────────────────────────────────────────────────────────────
+
+// ── Background tasks ─────────────────────────────────────────────────────────
+
+describe('Background task tools', () => {
+  it('creates, lists, reads, and stops background tasks', async () => {
+    backgroundTasks.resetForTests();
+
+    const created = await backgroundCreateTool.execute({
+      command: 'node -e "let i=0; setInterval(() => console.log(++i), 50)"',
+      workdir: '/tmp',
+    });
+    assert.equal(created.taskId, 'bg_1');
+    assert.equal(created.status, 'running');
+
+    const listed = backgroundListTool.execute({});
+    assert.equal(listed.tasks.length, 1);
+    assert.equal(listed.tasks[0].taskId, 'bg_1');
+    assert.equal(listed.tasks[0].cwd, '/tmp');
+    assert.equal(listed.tasks[0].status, 'running');
+
+    await new Promise(resolve => setTimeout(resolve, 120));
+    const read = backgroundReadTool.execute({ taskId: 'bg_1' });
+    assert.equal(read.taskId, 'bg_1');
+    assert.ok(read.output.trim().length > 0);
+    assert.ok(read.formatted.includes('[TASK_ID="bg_1"'));
+    assert.ok(read.formatted.includes('[END_OF_TASK_OUTPUT DURATION_SECONDS="'));
+
+    const stopped = backgroundStopTool.execute({ taskId: 'bg_1' });
+    assert.equal(stopped.ok, true);
+    assert.equal(stopped.taskId, 'bg_1');
+    backgroundTasks.resetForTests();
+  });
+
+  it('reports missing background tasks', () => {
+    backgroundTasks.resetForTests();
+    assert.ok(backgroundReadTool.execute({ taskId: 'bg_missing' }).error);
+    assert.equal(backgroundStopTool.execute({ taskId: 'bg_missing' }).ok, false);
+  });
+});
+
+
 
 describe('Grep', () => {
   const grepDir = path.join(testDir, 'grep');
