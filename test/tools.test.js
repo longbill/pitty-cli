@@ -11,6 +11,7 @@ const readTool = require('../lib/tools/read.js');
 const writeTool = require('../lib/tools/write.js');
 const editTool = require('../lib/tools/edit.js');
 const bashTool = require('../lib/tools/bash.js');
+const backgroundTasks = require('../lib/backgroundTasks.js');
 const grepTool = require('../lib/tools/grep.js');
 const { executeToolCall } = require('../lib/tools.js');
 const { isAllowedPath } = require('../lib/safePath.js');
@@ -312,10 +313,29 @@ describe('Bash', () => {
     assert.ok(Date.now() - start < 500, 'cat should exit promptly when stdin is closed');
   });
 
-  it('handles timeout', async () => {
-    const res = await bashTool.execute({ command: 'sleep 10', timeout: 100 });
-    assert.equal(res.exitCode, null); // killed, no exit code
+  it('moves long-running commands to background', async () => {
+    backgroundTasks.resetForTests();
+    const start = Date.now();
+    const res = await bashTool.execute({
+      command: 'node -e "setTimeout(() => console.log(\'done\'), 200)"',
+      backgroundAfter: 50,
+      timeout: 5000,
+    });
+
+    assert.equal(res.background, true);
+    assert.equal(res.taskId, 'bg_1');
+    assert.ok(Date.now() - start < 150);
+    assert.ok(res.stdout.includes('后台任务'));
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const deltas = backgroundTasks.consumeTaskDeltas();
+    assert.equal(deltas.length, 1);
+    assert.equal(deltas[0].id, 'bg_1');
+    assert.ok(deltas[0].output.includes('done'));
+    assert.equal(deltas[0].status, 'completed');
+    backgroundTasks.resetForTests();
   });
+
 });
 
 // ── Grep ───────────────────────────────────────────────────────────────────

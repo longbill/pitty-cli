@@ -18,7 +18,7 @@ describe('tool confirmation formatting', () => {
     const content = 'line1\nline2\nline3';
     const text = formatToolConfirmation('Write', { file_path: '/tmp/a.txt', content });
 
-    assert.ok(text.includes('Write'));
+    assert.ok(text.includes('请确认是否写入以下文件:'));
     assert.ok(text.includes('/tmp/a.txt'));
     assert.ok(text.includes(content));
   });
@@ -32,7 +32,7 @@ describe('tool confirmation formatting', () => {
       new_string: newString,
     });
 
-    assert.ok(text.includes('Edit'));
+    assert.ok(text.includes('请确认是否编辑以下文件:'));
     assert.ok(text.includes('/tmp/a.txt'));
     assert.ok(text.includes(oldString));
     assert.ok(text.includes(newString));
