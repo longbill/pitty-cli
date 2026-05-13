@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { createHistory } = require('../lib/inputHistory.js');
 const repl = require('../lib/repl.js');
+const switchModel = require('../lib/switchModel.js');
 
 describe('REPL stdin handling', () => {
   it('resumes stdin after tool confirmation closes readline', () => {
@@ -76,5 +77,28 @@ describe('REPL input history', () => {
     history.push('   ');
 
     assert.equal(history.previous('draft'), 'draft');
+  });
+});
+
+describe('model switching', () => {
+  it('lists provider model refs', () => {
+    const models = switchModel.getSelectableModels({
+      main_model: 'openai/gpt-4.1',
+      provider: {
+        openai: { models: ['gpt-4.1', 'gpt-4.1-mini'] },
+        deepseek: { models: ['deepseek-chat'] },
+      },
+    });
+
+    assert.deepEqual(models, [
+      'openai/gpt-4.1',
+      'openai/gpt-4.1-mini',
+      'deepseek/deepseek-chat',
+    ]);
+  });
+
+  it('marks current model in labels', () => {
+    assert.equal(switchModel.formatModelLabel('openai/gpt-4.1', 'openai/gpt-4.1'), '* openai/gpt-4.1');
+    assert.equal(switchModel.formatModelLabel('openai/gpt-4.1-mini', 'openai/gpt-4.1'), '  openai/gpt-4.1-mini');
   });
 });

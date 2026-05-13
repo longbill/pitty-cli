@@ -148,4 +148,108 @@ describe('chat status bar', () => {
       config.getPermissionMode = originalGetPermissionMode;
     }
   });
+
+  it('prints accept-all tool call text only once', async () => {
+    const originalChat = api.chat;
+    const originalGetPermissionMode = config.getPermissionMode;
+    const originalGetAcceptAllWaitSeconds = config.getAcceptAllWaitSeconds;
+    config.getPermissionMode = () => 'accept-all';
+    config.getAcceptAllWaitSeconds = () => 0;
+
+    let calls = 0;
+    api.chat = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          content: '',
+          reasoning: '',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) },
+          }],
+          usage: null,
+        };
+      }
+      return {
+        content: 'done',
+        reasoning: '',
+        toolCalls: [],
+        usage: null,
+      };
+    };
+    const chat = reloadChat();
+
+    try {
+      const { output } = await captureStdout(() => chat.run('hi', {
+        maxTurns: 2,
+        statusBar: false,
+      }));
+      const count = (output.match(/执行命令: echo hi/g) || []).length;
+      assert.equal(count, 1);
+    } finally {
+      api.chat = originalChat;
+      config.getPermissionMode = originalGetPermissionMode;
+      config.getAcceptAllWaitSeconds = originalGetAcceptAllWaitSeconds;
+    }
+  });
+
+  it('repairs incomplete tool calls before continuing a conversation', async () => {
+    const originalChat = api.chat;
+    let sentMessages = null;
+    api.chat = async (messages) => {
+      sentMessages = messages.map(m => ({ ...m }));
+      return {
+        content: 'ok',
+        reasoning: '',
+        toolCalls: [],
+        usage: null,
+      };
+    };
+    const chat = reloadChat();
+
+    try {
+      await captureStdout(() => chat.run('continue', {
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'Read', arguments: JSON.stringify({ file_path: '/tmp/missing' }) },
+            }],
+          },
+        ],
+        statusBar: false,
+      }));
+
+      assert.deepEqual(sentMessages, [
+        { role: 'user', content: 'hi' },
+        { role: 'user', content: 'continue' },
+      ]);
+    } finally {
+      api.chat = originalChat;
+    }
+  });
+
+  it('removes assistant tool calls without consecutive tool responses', () => {
+    const chat = reloadChat();
+    const repaired = chat._test.repairMessages([
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'Bash', arguments: '{}' },
+        }],
+      },
+      { role: 'user', content: 'continue' },
+    ]);
+
+    assert.deepEqual(repaired, [{ role: 'user', content: 'hi' }]);
+  });
 });

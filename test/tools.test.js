@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { createTestFile, cleanup, getTestDir } = require('./helpers.js');
+const config = require('../lib/config.js');
 
 // ── Tool modules ──────────────────────────────────────────────────────
 const globTool = require('../lib/tools/glob.js');
@@ -321,7 +322,7 @@ describe('Bash', () => {
     backgroundTasks.resetForTests();
     const start = Date.now();
     const res = await bashTool.execute({
-      command: 'node -e "setTimeout(() => console.log(\'done\'), 200)"',
+      command: 'sleep 0.2; echo done',
       backgroundAfter: 50,
       timeout: 5000,
     });
@@ -330,6 +331,10 @@ describe('Bash', () => {
     assert.equal(res.taskId, 'bg_1');
     assert.ok(Date.now() - start < 150);
     assert.ok(res.stdout.includes('后台任务'));
+    assert.ok(res.stdout.includes('命令已经运行了0.05秒，已转为后台任务继续运行。'));
+    assert.ok(res.stdout.includes('后台任务运行结束后，会自动通知你。你现在不需要做任何操作。'));
+    assert.equal(res.stdout.includes('/bg stop'), false);
+    assert.equal(res.stdout.includes('/bg list'), false);
 
     await new Promise(resolve => setTimeout(resolve, 300));
     const deltas = backgroundTasks.consumeTaskDeltas();
@@ -338,6 +343,63 @@ describe('Bash', () => {
     assert.ok(deltas[0].output.includes('done'));
     assert.equal(deltas[0].status, 'completed');
     backgroundTasks.resetForTests();
+  });
+
+  it('reports completed status for final background output', async () => {
+    backgroundTasks.resetForTests();
+    await bashTool.execute({
+      command: 'sleep 0.05; echo finished',
+      backgroundAfter: 10,
+      timeout: 5000,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const deltas = backgroundTasks.consumeTaskDeltas();
+    assert.equal(deltas.length, 1);
+    assert.equal(deltas[0].status, 'completed');
+    assert.equal(deltas[0].exitCode, 0);
+    assert.ok(deltas[0].output.includes('finished'));
+    backgroundTasks.resetForTests();
+  });
+
+  it('starts commands estimated over 30 seconds in background immediately', async () => {
+    const originalGetBashBackgroundAfterMs = config.getBashBackgroundAfterMs;
+    config.getBashBackgroundAfterMs = () => 30000;
+    backgroundTasks.resetForTests();
+    try {
+      const start = Date.now();
+      const res = await bashTool.execute({
+        command: 'sleep 31; echo done',
+        timeout: 5000,
+      });
+
+      assert.equal(res.background, true);
+      assert.equal(res.taskId, 'bg_1');
+      assert.ok(Date.now() - start < 500);
+      assert.ok(res.stdout.includes('预计命令可能会运行超过30秒，已转为后台继续运行。'));
+      assert.ok(res.stdout.includes('后台任务运行结束后，会自动通知你。你现在不需要做任何操作。'));
+    } finally {
+      backgroundTasks.resetForTests();
+      config.getBashBackgroundAfterMs = originalGetBashBackgroundAfterMs;
+    }
+  });
+
+  it('uses configured background threshold in estimated background message', async () => {
+    const originalGetBashBackgroundAfterMs = config.getBashBackgroundAfterMs;
+    config.getBashBackgroundAfterMs = () => 10000;
+    backgroundTasks.resetForTests();
+    try {
+      const res = await bashTool.execute({
+        command: 'sleep 11; echo done',
+        timeout: 5000,
+      });
+
+      assert.equal(res.background, true);
+      assert.ok(res.stdout.includes('预计命令可能会运行超过10秒，已转为后台继续运行。'));
+    } finally {
+      backgroundTasks.resetForTests();
+      config.getBashBackgroundAfterMs = originalGetBashBackgroundAfterMs;
+    }
   });
 
 });
@@ -350,7 +412,7 @@ describe('Background task tools', () => {
     backgroundTasks.resetForTests();
 
     const created = await backgroundCreateTool.execute({
-      command: 'node -e "let i=0; setInterval(() => console.log(++i), 50)"',
+      command: 'while true; do echo tick; sleep 0.05; done',
       workdir: '/tmp',
     });
     assert.equal(created.taskId, 'bg_1');
@@ -387,48 +449,63 @@ describe('Background task tools', () => {
 describe('Grep', () => {
   const grepDir = path.join(testDir, 'grep');
 
-  it('finds string matches in a single file', () => {
-    const res = grepTool.execute({ pattern: 'hello', path: path.join(grepDir, 'sample.txt') });
+  it('finds string matches in a single file', async () => {
+    const res = await grepTool.execute({ pattern: 'hello', path: path.join(grepDir, 'sample.txt') });
     assert.equal(res.error, undefined);
     assert.equal(res.count, 3);
   });
 
-  it('finds string matches in a directory', () => {
-    const res = grepTool.execute({ pattern: 'hello', path: grepDir });
+  it('finds string matches in a directory', async () => {
+    const res = await grepTool.execute({ pattern: 'hello', path: grepDir });
     assert.equal(res.error, undefined);
     assert.ok(res.count >= 3);
   });
 
-  it('treats /pattern/ as regex', () => {
+  it('treats /pattern/ as regex', async () => {
     // /wo?/ matches "wo" and "w" but not "world" (w followed by o)
     // Actually /wo?/ in "hello world" matches "wo" in "world"
-    const res = grepTool.execute({ pattern: '/wo?/', path: path.join(grepDir, 'sample.txt') });
+    const res = await grepTool.execute({ pattern: '/wo?/', path: path.join(grepDir, 'sample.txt') });
     assert.equal(res.error, undefined);
     assert.equal(res.count >= 1, true);
   });
 
-  it('treats path-like /usr/bin as string not regex', () => {
+  it('treats path-like /usr/bin as string not regex', async () => {
     const grepFile = path.join(testDir, 'grep_path_test.txt');
     fs.writeFileSync(grepFile, '/usr/bin/foo\n/usr/local/bin/bar\n');
-    const res = grepTool.execute({ pattern: '/usr/bin', path: grepFile });
+    const res = await grepTool.execute({ pattern: '/usr/bin', path: grepFile });
     assert.equal(res.error, undefined);
     assert.equal(res.count, 1);
   });
 
-  it('uses regex when pattern contains special chars with / delimiters', () => {
+  it('uses regex when pattern contains special chars with / delimiters', async () => {
     const grepFile = path.join(testDir, 'grep_regex_test.txt');
     fs.writeFileSync(grepFile, 'foo123\nfoo\nfo\nfooo\nbar\n');
-    const res = grepTool.execute({ pattern: '/fo+/', path: grepFile });
+    const res = await grepTool.execute({ pattern: '/fo+/', path: grepFile });
     assert.equal(res.error, undefined);
     // fo+ matches lines: "foo123" (matches "foo"), "foo", "fo", "fooo"
     assert.equal(res.count, 4);
   });
 
-  it('respects maxResults limit', () => {
-    const res = grepTool.execute({ pattern: 'line', path: path.join(testDir, 'readme.txt'), maxResults: 2 });
+  it('respects maxResults limit', async () => {
+    const res = await grepTool.execute({ pattern: 'line', path: path.join(testDir, 'readme.txt'), maxResults: 2 });
     assert.equal(res.error, undefined);
     assert.equal(res.count, 2);
     assert.equal(res.results.length, 2);
+  });
+
+  it('stops directory searches after a bounded amount of work', async () => {
+    const manyDir = path.join(testDir, 'grep_many');
+    fs.mkdirSync(manyDir, { recursive: true });
+    for (let i = 0; i < 1100; i++) {
+      fs.writeFileSync(path.join(manyDir, `file${i}.txt`), 'no match here\n');
+    }
+
+    const res = await grepTool.execute({ pattern: 'needle', path: manyDir });
+    assert.equal(res.error, undefined);
+    assert.equal(res.filesScanned, 1000);
+    assert.ok(res.stoppedReason);
+
+    fs.rmSync(manyDir, { recursive: true, force: true });
   });
 });
 

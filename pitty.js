@@ -31,6 +31,19 @@ if (args.includes('--system-prompt') || args.includes('-sp')) {
   process.exit(0);
 }
 
+if (args.includes('--switch-model')) {
+  const { chooseModelInteractive } = require('./lib/switchModel.js');
+  chooseModelInteractive().then((result) => {
+    if (result.selected) console.log(`当前模型: ${result.model}`);
+    process.exit(0);
+  }).catch((err) => {
+    logger.logError('switch-model', err);
+    console.error('\n\x1b[31m' + _('cli.errorPrefix') + err.message + '\x1b[0m');
+    process.exit(1);
+  });
+  return;
+}
+
 // ── Permission mode override via CLI ──────────────────────────────────
 const MODE_FLAGS = ['--accept-all', '--read-only', '--ask', '--audit', '--none'];
 for (const flag of MODE_FLAGS) {
