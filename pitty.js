@@ -46,7 +46,7 @@ if (args.includes('--switch-model')) {
 }
 
 // ── Permission mode override via CLI ──────────────────────────────────
-const MODE_FLAGS = ['--accept-all', '--read-only', '--ask', '--audit', '--none'];
+const MODE_FLAGS = ['--accept-all', '--read-only', '--ask', '--audit', '--web-only'];
 for (const flag of MODE_FLAGS) {
   const idx = args.indexOf(flag);
   if (idx !== -1) {
