@@ -5,6 +5,7 @@ const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { _, _fmt } = require('./lib/lang/index.js');
 const chat = require('./lib/chat.js');
+const bashTool = require('./lib/tools/bash.js');
 const { run } = chat;
 
 logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(2), node: process.version });
@@ -117,6 +118,18 @@ if (isInteractive) {
 }
 
 async function runAndExit(prompt) {
+  const canCaptureKeys = process.stdin.isTTY && typeof process.stdin.setRawMode === 'function';
+  const onKey = (chunk) => {
+    if (Buffer.isBuffer(chunk) && chunk.includes(2)) {
+      bashTool.moveCurrentRunToBackground();
+    }
+  };
+  if (canCaptureKeys) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on('data', onKey);
+  }
+
   try {
     const result = await run(prompt, { confirm: makeConfirmFn(), statusBar: false });
     if (result.aborted) {
@@ -127,5 +140,11 @@ async function runAndExit(prompt) {
     logger.logError('run', err);
     console.error('\n\x1b[31m' + _('cli.errorPrefix') + err.message + '\x1b[0m');
     process.exit(1);
+  } finally {
+    if (canCaptureKeys) {
+      process.stdin.removeListener('data', onKey);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    }
   }
 }

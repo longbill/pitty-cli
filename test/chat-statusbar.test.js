@@ -67,14 +67,22 @@ describe('chat status bar', () => {
     let calls = 0;
     api.chat = async () => {
       calls++;
+      if (calls === 1) {
+        return {
+          content: '',
+          reasoning: '',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) },
+          }],
+          usage: null,
+        };
+      }
       return {
-        content: '',
+        content: 'done',
         reasoning: '',
-        toolCalls: [{
-          id: 'call_1',
-          type: 'function',
-          function: { name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) },
-        }],
+        toolCalls: [],
         usage: null,
       };
     };
@@ -83,7 +91,7 @@ describe('chat status bar', () => {
     try {
       let outputWhileConfirming = '';
       const { output } = await captureStdout((getOutput) => chat.run('hi', {
-        maxTurns: 1,
+        maxTurns: 2,
         confirm: async () => {
           process.stdout.write('CONFIRM?');
           await new Promise(resolve => setTimeout(() => {
@@ -96,7 +104,42 @@ describe('chat status bar', () => {
 
       const afterConfirmPrompt = outputWhileConfirming.slice(outputWhileConfirming.indexOf('CONFIRM?') + 'CONFIRM?'.length);
       assert.equal(afterConfirmPrompt.includes('\r\x1b[K'), false);
-      assert.equal(calls, 1);
+      assert.equal(calls, 2);
+    } finally {
+      api.chat = originalChat;
+      config.getPermissionMode = originalGetPermissionMode;
+    }
+  });
+
+  it('does not ask for confirmation after reaching max turns', async () => {
+    const originalChat = api.chat;
+    const originalGetPermissionMode = config.getPermissionMode;
+    config.getPermissionMode = () => 'ask';
+
+    api.chat = async () => ({
+      content: '',
+      reasoning: '',
+      toolCalls: [{
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) },
+      }],
+      usage: null,
+    });
+    const chat = reloadChat();
+
+    try {
+      let confirmCalled = false;
+      await captureStdout(() => chat.run('hi', {
+        maxTurns: 1,
+        statusBar: false,
+        confirm: async () => {
+          confirmCalled = true;
+          return true;
+        },
+      }));
+
+      assert.equal(confirmCalled, false);
     } finally {
       api.chat = originalChat;
       config.getPermissionMode = originalGetPermissionMode;

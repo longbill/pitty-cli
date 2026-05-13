@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { createTestFile, cleanup, getTestDir } = require('./helpers.js');
-const config = require('../lib/config.js');
 
 // ── Tool modules ──────────────────────────────────────────────────────
 const globTool = require('../lib/tools/glob.js');
@@ -318,20 +317,20 @@ describe('Bash', () => {
     assert.ok(Date.now() - start < 500, 'cat should exit promptly when stdin is closed');
   });
 
-  it('moves long-running commands to background', async () => {
+  it('moves a running command to background on request', async () => {
     backgroundTasks.resetForTests();
     const start = Date.now();
-    const res = await bashTool.execute({
+    const promise = bashTool.execute({
       command: 'sleep 0.2; echo done',
-      backgroundAfter: 50,
       timeout: 5000,
     });
+    setTimeout(() => bashTool.moveCurrentRunToBackground(), 50);
+    const res = await promise;
 
     assert.equal(res.background, true);
     assert.equal(res.taskId, 'bg_1');
     assert.ok(Date.now() - start < 150);
-    assert.ok(res.stdout.includes('后台任务'));
-    assert.ok(res.stdout.includes('命令已经运行了0.05秒，已转为后台任务继续运行。'));
+    assert.ok(res.stdout.includes('已转为后台任务继续运行。'));
     assert.ok(res.stdout.includes('后台任务运行结束后，会自动通知你。你现在不需要做任何操作。'));
     assert.equal(res.stdout.includes('/bg stop'), false);
     assert.equal(res.stdout.includes('/bg list'), false);
@@ -347,11 +346,12 @@ describe('Bash', () => {
 
   it('reports completed status for final background output', async () => {
     backgroundTasks.resetForTests();
-    await bashTool.execute({
+    const promise = bashTool.execute({
       command: 'sleep 0.05; echo finished',
-      backgroundAfter: 10,
       timeout: 5000,
     });
+    setTimeout(() => bashTool.moveCurrentRunToBackground(), 10);
+    await promise;
 
     await new Promise(resolve => setTimeout(resolve, 200));
     const deltas = backgroundTasks.consumeTaskDeltas();
@@ -362,44 +362,19 @@ describe('Bash', () => {
     backgroundTasks.resetForTests();
   });
 
-  it('starts commands estimated over 30 seconds in background immediately', async () => {
-    const originalGetBashBackgroundAfterMs = config.getBashBackgroundAfterMs;
-    config.getBashBackgroundAfterMs = () => 30000;
+  it('does not automatically background commands estimated as long-running', async () => {
     backgroundTasks.resetForTests();
-    try {
-      const start = Date.now();
-      const res = await bashTool.execute({
-        command: 'sleep 31; echo done',
-        timeout: 5000,
-      });
+    const res = await bashTool.execute({
+      command: 'sleep 0.05; echo done',
+      backgroundAfter: 10,
+      timeout: 5000,
+    });
 
-      assert.equal(res.background, true);
-      assert.equal(res.taskId, 'bg_1');
-      assert.ok(Date.now() - start < 500);
-      assert.ok(res.stdout.includes('预计命令可能会运行超过30秒，已转为后台继续运行。'));
-      assert.ok(res.stdout.includes('后台任务运行结束后，会自动通知你。你现在不需要做任何操作。'));
-    } finally {
-      backgroundTasks.resetForTests();
-      config.getBashBackgroundAfterMs = originalGetBashBackgroundAfterMs;
-    }
-  });
-
-  it('uses configured background threshold in estimated background message', async () => {
-    const originalGetBashBackgroundAfterMs = config.getBashBackgroundAfterMs;
-    config.getBashBackgroundAfterMs = () => 10000;
+    assert.equal(res.background, undefined);
+    assert.equal(res.exitCode, 0);
+    assert.ok(res.stdout.includes('done'));
+    assert.equal(backgroundTasks.listTasks().length, 0);
     backgroundTasks.resetForTests();
-    try {
-      const res = await bashTool.execute({
-        command: 'sleep 11; echo done',
-        timeout: 5000,
-      });
-
-      assert.equal(res.background, true);
-      assert.ok(res.stdout.includes('预计命令可能会运行超过10秒，已转为后台继续运行。'));
-    } finally {
-      backgroundTasks.resetForTests();
-      config.getBashBackgroundAfterMs = originalGetBashBackgroundAfterMs;
-    }
   });
 
 });
