@@ -202,7 +202,7 @@ describe('Read', () => {
     assert.equal(res.error, undefined);
     const lines = res.content.split('\n');
     assert.equal(lines.length <= 2, true);
-    assert.equal(lines[0], '2 line1');
+    assert.equal(lines[0], '2	line1');
   });
 
   it('returns error for non-existent file', async () => {
