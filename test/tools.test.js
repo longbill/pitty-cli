@@ -98,86 +98,88 @@ describe('safePath', () => {
 
 describe('Glob', () => {
   function glob(pattern, dir) {
-    return globTool.execute({ pattern, directory: dir || path.join(testDir, 'glob') });
+    return path.join(testDir, 'glob', dir || '');
   }
 
-  it('matches *.js at top level', () => {
-    const res = glob('*.js');
+  async function globExec(pattern, searchDir) {
+    return globTool.execute({ pattern, path: searchDir || glob('') });
+  }
+
+  it('matches *.js at any depth', async () => {
+    const res = await globExec('*.js');
     assert.equal(res.error, undefined);
-    const files = res.files.map(f => path.basename(f));
+    const files = res.files.map(f => path.relative(glob(''), f));
     assert.ok(files.includes('a.js'));
-    assert.equal(files.includes('sub/c.js'), false, 'should not match nested .js');
+    assert.ok(files.includes('sub/c.js'));
     assert.equal(files.includes('b.txt'), false);
   });
 
-  it('matches **/*.js recursively', () => {
-    const res = glob('**/*.js');
+  it('matches **/*.js recursively', async () => {
+    const res = await globExec('**/*.js');
     assert.equal(res.error, undefined);
-    const files = res.files.map(f => path.relative(path.join(testDir, 'glob'), f));
+    const files = res.files.map(f => path.relative(glob(''), f));
     assert.ok(files.includes('a.js'));
     assert.ok(files.includes('sub/c.js'));
     assert.ok(files.includes('sub/deep/e.js'));
   });
 
-  it('matches **/c.js at any depth', () => {
-    const res = glob('**/c.js');
+  it('matches **/c.js at any depth', async () => {
+    const res = await globExec('**/c.js');
     assert.equal(res.error, undefined);
-    const files = res.files.map(f => path.relative(path.join(testDir, 'glob'), f));
+    const files = res.files.map(f => path.relative(glob(''), f));
     assert.ok(files.includes('sub/c.js'));
     assert.equal(files.includes('a.js'), false);
   });
 
-  it('matches single char with ?', () => {
-    const res = glob('?.js');
+  it('matches single char with ?', async () => {
+    const res = await globExec('?.js');
     assert.equal(res.error, undefined);
     const files = res.files.map(f => path.basename(f));
     assert.ok(files.includes('a.js'));
-    // b.txt should not match ?.js
     assert.equal(files.includes('b.txt'), false);
   });
 
-  it('matches exact path with no glob chars', () => {
-    const res = glob('a.js');
+  it('matches exact filename with no glob chars', async () => {
+    const res = await globExec('a.js');
     assert.equal(res.error, undefined);
-    assert.equal(res.count, 1);
+    assert.equal(res.files.length, 1);
     assert.equal(path.basename(res.files[0]), 'a.js');
   });
 
-  it('returns empty array for non-existent exact path', () => {
-    const res = glob('nonexistent.js');
+  it('returns empty array for non-existent path', async () => {
+    const res = await globExec('nonexistent.js');
     assert.equal(res.error, undefined);
-    assert.equal(res.count, 0);
-    assert.deepEqual(res.files, []);
+    assert.equal(res.files.length, 0);
   });
 
-  it('returns error for invalid directory', () => {
-    const res = globTool.execute({ pattern: '*.js', directory: '/nonexistent_dir_xyz' });
+  it('returns error for invalid directory', async () => {
+    const res = await globTool.execute({ pattern: '*.js', path: '/nonexistent_dir_xyz' });
     assert.ok(res.error);
   });
 
-  it('handles *.* pattern', () => {
-    const res = glob('*.*');
+  it('handles *.* pattern', async () => {
+    const res = await globExec('*.*');
     assert.equal(res.error, undefined);
-    assert.equal(res.count, 2); // a.js and b.txt (top level only)
+    assert.ok(res.files.length >= 2); // matches any file with a dot at any depth
   });
 
-  it('limits results to 200', () => {
+  it('respects limit parameter', async () => {
     const manyDir = path.join(testDir, 'glob_many');
     fs.mkdirSync(manyDir, { recursive: true });
     for (let i = 0; i < 250; i++) {
       fs.writeFileSync(path.join(manyDir, `file${i}.js`), '');
     }
-    const res = globTool.execute({ pattern: '*.js', directory: manyDir });
-    assert.equal(res.files.length <= 200, true);
-    assert.equal(res.count, 250);
+    const res = await globTool.execute({ pattern: '*.js', path: manyDir, limit: 50 });
+    assert.equal(res.files.length, 50);
+    assert.equal(res.truncated, true);
     fs.rmSync(manyDir, { recursive: true, force: true });
   });
 
-  it('does not match dotfiles or files in node_modules', () => {
+  it('does not match dotfiles or files in node_modules', async () => {
     createTestFile('glob/.hidden.js', '');
     createTestFile('glob/node_modules/skip.js', '');
-    const res = glob('**/*.js');
-    const files = res.files.map(f => path.relative(path.join(testDir, 'glob'), f));
+    const res = await globExec('**/*.js');
+    const files = res.files.map(f => path.relative(glob(''), f));
     assert.equal(files.includes('.hidden.js'), false);
     assert.equal(files.includes('node_modules/skip.js'), false);
   });
