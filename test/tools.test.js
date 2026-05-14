@@ -264,8 +264,13 @@ describe('Edit', () => {
     fs.writeFileSync(filePath, 'hello world\nfoo bar\n', 'utf-8');
   });
 
+  function makeEditMessages() {
+    const stat = fs.statSync(filePath);
+    return [{ role: 'tool', content: JSON.stringify({ path: filePath, _mtime: stat.mtimeMs }) }];
+  }
+
   it('replaces existing content', () => {
-    const res = editTool.execute({ file_path: filePath, old_string: 'foo bar', new_string: 'baz qux' });
+    const res = editTool.execute({ file_path: filePath, old_string: 'foo bar', new_string: 'baz qux' }, { messages: makeEditMessages() });
     assert.equal(res.error, undefined);
     assert.equal(res.ok, true);
     assert.equal(res.replaced, 1);
@@ -273,7 +278,7 @@ describe('Edit', () => {
   });
 
   it('returns error when old_string not found', () => {
-    const res = editTool.execute({ file_path: filePath, old_string: 'nonexistent', new_string: 'x' });
+    const res = editTool.execute({ file_path: filePath, old_string: 'nonexistent', new_string: 'x' }, { messages: makeEditMessages() });
     assert.ok(res.error);
   });
 
