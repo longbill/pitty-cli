@@ -441,15 +441,14 @@ describe('Grep', () => {
     assert.ok(res.count >= 3);
   });
 
-  it('treats /pattern/ as regex', async () => {
-    // /wo?/ matches "wo" and "w" but not "world" (w followed by o)
-    // Actually /wo?/ in "hello world" matches "wo" in "world"
-    const res = await grepTool.execute({ pattern: '/wo?/', path: path.join(grepDir, 'sample.txt') });
+  it('supports regex patterns', async () => {
+    // wo? matches "wo" or "w"; in "hello world" it matches "wo"
+    const res = await grepTool.execute({ pattern: 'wo?', path: path.join(grepDir, 'sample.txt') });
     assert.equal(res.error, undefined);
-    assert.equal(res.count >= 1, true);
+    assert.ok(res.count >= 1);
   });
 
-  it('treats path-like /usr/bin as string not regex', async () => {
+  it('matches literal path strings as regex', async () => {
     const grepFile = path.join(testDir, 'grep_path_test.txt');
     fs.writeFileSync(grepFile, '/usr/bin/foo\n/usr/local/bin/bar\n');
     const res = await grepTool.execute({ pattern: '/usr/bin', path: grepFile });
@@ -457,35 +456,47 @@ describe('Grep', () => {
     assert.equal(res.count, 1);
   });
 
-  it('uses regex when pattern contains special chars with / delimiters', async () => {
+  it('supports regex quantifiers', async () => {
     const grepFile = path.join(testDir, 'grep_regex_test.txt');
     fs.writeFileSync(grepFile, 'foo123\nfoo\nfo\nfooo\nbar\n');
-    const res = await grepTool.execute({ pattern: '/fo+/', path: grepFile });
+    const res = await grepTool.execute({ pattern: 'fo+', path: grepFile });
     assert.equal(res.error, undefined);
     // fo+ matches lines: "foo123" (matches "foo"), "foo", "fo", "fooo"
     assert.equal(res.count, 4);
   });
 
-  it('respects maxResults limit', async () => {
-    const res = await grepTool.execute({ pattern: 'line', path: path.join(testDir, 'readme.txt'), maxResults: 2 });
+  it('respects head_limit', async () => {
+    const res = await grepTool.execute({ pattern: 'line', path: path.join(testDir, 'readme.txt'), head_limit: 2 });
     assert.equal(res.error, undefined);
     assert.equal(res.count, 2);
-    assert.equal(res.results.length, 2);
+    assert.ok(typeof res.results === 'string');
   });
 
-  it('stops directory searches after a bounded amount of work', async () => {
-    const manyDir = path.join(testDir, 'grep_many');
-    fs.mkdirSync(manyDir, { recursive: true });
-    for (let i = 0; i < 1100; i++) {
-      fs.writeFileSync(path.join(manyDir, `file${i}.txt`), 'no match here\n');
-    }
-
-    const res = await grepTool.execute({ pattern: 'needle', path: manyDir });
+  it('supports files_with_matches output mode', async () => {
+    const res = await grepTool.execute({ pattern: 'hello', path: grepDir, output_mode: 'files_with_matches' });
     assert.equal(res.error, undefined);
-    assert.equal(res.filesScanned, 1000);
-    assert.ok(res.stoppedReason);
+    assert.ok(res.count >= 1);
+    assert.ok(Array.isArray(res.results));
+  });
 
-    fs.rmSync(manyDir, { recursive: true, force: true });
+  it('supports count output mode', async () => {
+    const res = await grepTool.execute({ pattern: 'hello', path: grepDir, output_mode: 'count' });
+    assert.equal(res.error, undefined);
+    assert.ok(res.count >= 3);
+    assert.ok(Array.isArray(res.results));
+  });
+
+  it('supports case insensitive search', async () => {
+    const res = await grepTool.execute({ pattern: 'HELLO', path: path.join(grepDir, 'sample.txt'), '-i': true });
+    assert.equal(res.error, undefined);
+    assert.equal(res.count, 3);
+  });
+
+  it('returns content mode results with file and line info', async () => {
+    const res = await grepTool.execute({ pattern: 'hello', path: path.join(grepDir, 'sample.txt') });
+    assert.equal(res.error, undefined);
+    assert.ok(res.results.includes('File:'));
+    assert.ok(res.results.includes('\t'));
   });
 });
 
