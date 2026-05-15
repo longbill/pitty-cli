@@ -5,11 +5,22 @@ const { formatToolConfirmation } = require('../lib/toolConfirm.js');
 describe('tool confirmation formatting', () => {
   it('shows the full bash command with the confirmation prompt', () => {
     const command = 'node -e "console.log(\'0123456789\'.repeat(20))"';
-    const text = formatToolConfirmation('Bash', { command, timeout: 1234 });
+    const text = formatToolConfirmation('Bash', { command, timeout: 1234, workdir: '/tmp' });
 
     assert.ok(text.includes('请确认是否执行这条 Bash 命令(1秒超时):'));
+    assert.ok(text.includes('工作目录:'));
+    assert.ok(text.includes('/tmp'));
     assert.ok(text.includes(`\x1b[32m${command}\x1b[0m`));
     assert.ok(text.includes('按回车确认，输入任何内容拒绝:'));
+  });
+
+  it('shows background task workdir and command', () => {
+    const text = formatToolConfirmation('BackgroundCreate', { command: 'npm start', workdir: '/tmp' });
+
+    assert.ok(text.includes('请确认是否创建后台 Bash 任务:'));
+    assert.ok(text.includes('工作目录:'));
+    assert.ok(text.includes('/tmp'));
+    assert.ok(text.includes('npm start'));
   });
 
   it('shows the write path and full content', () => {

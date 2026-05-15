@@ -2,7 +2,6 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { createTestFile, cleanup, getTestDir } = require('./helpers.js');
 
 // ── Tool modules ──────────────────────────────────────────────────────
@@ -17,6 +16,7 @@ const backgroundReadTool = require('../lib/tools/backgroundRead.js');
 const backgroundStopTool = require('../lib/tools/backgroundStop.js');
 const backgroundTasks = require('../lib/backgroundTasks.js');
 const grepTool = require('../lib/tools/grep.js');
+const webFetchTool = require('../lib/tools/webFetch.js');
 const { executeToolCall } = require('../lib/tools.js');
 const { isAllowedPath } = require('../lib/safePath.js');
 
@@ -65,32 +65,40 @@ describe('safePath', () => {
     assert.ok(isAllowedPath('/tmp/test-file.txt'));
   });
 
-  it('allows path under home', () => {
-    assert.ok(isAllowedPath(os.homedir()));
+  it('does not allow home just because it is home', () => {
+    assert.equal(isAllowedPath('/home/example/file.txt', {
+      cwd: '/workspace/project',
+      tmpDir: '/tmp',
+    }), false);
   });
 
-  it('blocks path outside allowed dirs', () => {
-    const allowed = isAllowedPath('/etc/passwd');
-    if (allowed) {
-      // If running as root where / is home, skip these assertions
-      // The user's homedir includes everything
-      assert.equal(isAllowedPath('/etc/passwd'), true);
-    } else {
-      assert.equal(isAllowedPath('/etc/passwd'), false);
-      assert.equal(isAllowedPath('/proc/1/cmdline'), false);
-    }
+  it('blocks path outside allowed dirs deterministically', () => {
+    const opts = { cwd: '/workspace/project', tmpDir: '/tmp' };
+    assert.equal(isAllowedPath('/etc/passwd', opts), false);
+    assert.equal(isAllowedPath('/proc/1/cmdline', opts), false);
   });
 
   it('blocks path traversal attempts', () => {
-    // If we're in a project dir under /root, /root/.ssh should be blocked
-    const cwd = process.cwd();
-    if (!cwd.startsWith('/root')) {
-      // Fallback: try to escape from home into a blocked area
-      const home = os.homedir();
-      // .ssh should be directly under home but if home IS allowed,
-      // this test may pass differently. Let's check a known blocked path.
-    }
     assert.equal(isAllowedPath(path.join(testDir, '../../../etc/passwd')), false);
+  });
+
+  it('blocks sensitive dot-directories even under allowed roots', () => {
+    const opts = { cwd: '/workspace/project', tmpDir: '/tmp' };
+    assert.equal(isAllowedPath('/workspace/project/.ssh/id_rsa', opts), false);
+    assert.equal(isAllowedPath('/workspace/project/.aws/credentials', opts), false);
+  });
+
+  it('blocks symlinks that resolve outside allowed roots', () => {
+    const outside = path.join(testDir, '..', 'pitty-outside-target.txt');
+    const link = path.join(testDir, 'link-outside.txt');
+    fs.writeFileSync(outside, 'secret', 'utf-8');
+    try {
+      fs.symlinkSync(outside, link);
+      assert.equal(isAllowedPath(link, { cwd: testDir, tmpDir: '/not-tmp' }), false);
+    } finally {
+      fs.rmSync(link, { force: true });
+      fs.rmSync(outside, { force: true });
+    }
   });
 });
 
@@ -316,6 +324,13 @@ describe('Bash', () => {
     assert.ok(res.stdout.trim().endsWith('/tmp') || res.stdout.trim() === '/tmp');
   });
 
+  it('blocks working directory outside allowed range', async () => {
+    const res = await bashTool.execute({ command: 'pwd', workdir: '/etc' });
+    assert.ok(res.error);
+    assert.ok(res.error.startsWith('Path not allowed'));
+    assert.equal(res.exitCode, -1);
+  });
+
   it('closes stdin for commands that wait for input', async () => {
     const start = Date.now();
     const res = await bashTool.execute({ command: 'cat', timeout: 1000 });
@@ -390,6 +405,15 @@ describe('Bash', () => {
 // ── Background tasks ─────────────────────────────────────────────────────────
 
 describe('Background task tools', () => {
+  it('blocks working directory outside allowed range', async () => {
+    const created = await backgroundCreateTool.execute({
+      command: 'pwd',
+      workdir: '/etc',
+    });
+    assert.ok(created.error);
+    assert.ok(created.error.startsWith('Path not allowed'));
+  });
+
   it('creates, lists, reads, and stops background tasks', async () => {
     backgroundTasks.resetForTests();
 
@@ -423,6 +447,28 @@ describe('Background task tools', () => {
     backgroundTasks.resetForTests();
     assert.ok(backgroundReadTool.execute({ taskId: 'bg_missing' }).error);
     assert.equal(backgroundStopTool.execute({ taskId: 'bg_missing' }).ok, false);
+  });
+});
+
+// ── WebFetch ────────────────────────────────────────────────────────────────
+
+describe('WebFetch', () => {
+  it('blocks non-http protocols', async () => {
+    const res = await webFetchTool.execute({ url: 'file:///etc/passwd' });
+    assert.ok(res.error);
+    assert.ok(res.error.includes('URL protocol not allowed'));
+  });
+
+  it('blocks localhost hosts before fetching', async () => {
+    const res = await webFetchTool.execute({ url: 'http://localhost:3000' });
+    assert.ok(res.error);
+    assert.ok(res.error.includes('URL host not allowed'));
+  });
+
+  it('blocks private IP hosts before fetching', async () => {
+    const res = await webFetchTool.execute({ url: 'http://127.0.0.1:3000' });
+    assert.ok(res.error);
+    assert.ok(res.error.includes('URL host not allowed'));
   });
 });
 
@@ -527,11 +573,12 @@ describe('executeToolCall', () => {
     const res = await executeToolCall({
       function: {
         name: 'Glob',
-        arguments: JSON.stringify({ pattern: '*.js', directory: path.join(testDir, 'glob') }),
+        arguments: JSON.stringify({ pattern: '*.js', path: path.join(testDir, 'glob') }),
       },
     });
     assert.equal(res.result.error, undefined);
     assert.ok(Array.isArray(res.result.files));
+    assert.ok(res.result.files.every(f => f.startsWith(path.join(testDir, 'glob'))));
   });
 
   it('catches runtime errors gracefully', async () => {
@@ -542,6 +589,6 @@ describe('executeToolCall', () => {
         arguments: JSON.stringify({ file_path: '/nonexistent' }),
       },
     });
-    assert.ok(res.result.error || res.result === undefined || true);
+    assert.ok(res.result.error);
   });
 });
