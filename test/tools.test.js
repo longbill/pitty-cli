@@ -448,6 +448,28 @@ describe('Background task tools', () => {
     assert.ok(backgroundReadTool.execute({ taskId: 'bg_missing' }).error);
     assert.equal(backgroundStopTool.execute({ taskId: 'bg_missing' }).ok, false);
   });
+
+  it('stops child processes in the background task process group', async () => {
+    backgroundTasks.resetForTests();
+    const marker = path.join(testDir, 'bg-process-group.txt');
+    const created = await backgroundCreateTool.execute({
+      command: `sh -c 'while true; do echo tick >> ${marker}; sleep 0.05; done'`,
+      workdir: '/tmp',
+    });
+
+    assert.equal(created.error, undefined);
+    await new Promise(resolve => setTimeout(resolve, 160));
+    const beforeStop = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf-8').split('\n').filter(Boolean).length : 0;
+    assert.ok(beforeStop > 0);
+
+    const stopped = backgroundStopTool.execute({ taskId: created.taskId });
+    assert.equal(stopped.ok, true);
+
+    await new Promise(resolve => setTimeout(resolve, 220));
+    const afterStop = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf-8').split('\n').filter(Boolean).length : 0;
+    assert.equal(afterStop, beforeStop);
+    backgroundTasks.resetForTests();
+  });
 });
 
 // ── WebFetch ────────────────────────────────────────────────────────────────
