@@ -13,7 +13,7 @@ Pitty CLI 是一个终端里的 AI 编程助手，基于 OpenAI-compatible Chat 
 - 文件读写、精确编辑、搜索、Bash、网页抓取、后台任务管理。
 - 自动注入当前目录向上的 `PITTY.md` 作为系统记忆。
 
-技术栈：Node.js CommonJS，入口 `pitty.js`，要求 Node.js >= 18。测试使用 `node --test`。
+技术栈：Node.js CommonJS，入口 `pitty.js`，要求 Node.js >= 20。测试使用 `node --test`。
 
 ## 常用命令
 

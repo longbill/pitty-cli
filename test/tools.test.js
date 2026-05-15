@@ -20,6 +20,14 @@ const webFetchTool = require('../lib/tools/webFetch.js');
 const { executeToolCall } = require('../lib/tools.js');
 const { isAllowedPath } = require('../lib/safePath.js');
 
+function makeFetchResponse({ status = 200, headers = {}, body = '' } = {}) {
+  return {
+    status,
+    headers: { get: (name) => headers[name.toLowerCase()] || null },
+    body: new Response(body).body,
+  };
+}
+
 let testDir;
 
 before(() => {
@@ -516,10 +524,9 @@ describe('WebFetch', () => {
   });
 
   it('blocks redirects to localhost before following them', async () => {
-    global.fetch = async () => ({
+    global.fetch = async () => makeFetchResponse({
       status: 302,
-      headers: { get: (name) => name.toLowerCase() === 'location' ? 'http://127.0.0.1:3000' : null },
-      body: new ReadableStream(),
+      headers: { location: 'http://127.0.0.1:3000' },
     });
 
     const res = await webFetchTool.execute({
@@ -528,6 +535,59 @@ describe('WebFetch', () => {
 
     assert.ok(res.error);
     assert.ok(res.error.includes('URL host not allowed'));
+  });
+
+  it('follows redirects to allowed URLs', async () => {
+    const fetched = [];
+    global.fetch = async (url) => {
+      fetched.push(url);
+      if (url === 'https://example.com/start') {
+        return makeFetchResponse({ status: 302, headers: { location: '/next' } });
+      }
+      return makeFetchResponse({ status: 200, headers: { 'content-type': 'text/plain' }, body: 'ok' });
+    };
+
+    const res = await webFetchTool.execute({
+      url: 'https://example.com/start',
+    }, { urlPolicy: { resolveDns: false } });
+
+    assert.equal(res.error, undefined);
+    assert.equal(res.status, 200);
+    assert.equal(res.url, 'https://example.com/next');
+    assert.equal(res.redirects, 1);
+    assert.equal(res.content, 'ok');
+    assert.deepEqual(fetched, ['https://example.com/start', 'https://example.com/next']);
+  });
+
+  it('blocks binary response content types', async () => {
+    global.fetch = async () => makeFetchResponse({
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream' },
+      body: 'binary',
+    });
+
+    const res = await webFetchTool.execute({
+      url: 'https://example.com/file',
+    }, { urlPolicy: { resolveDns: false } });
+
+    assert.ok(res.error);
+    assert.ok(res.error.includes('Response content type not allowed'));
+  });
+
+  it('marks responses as truncated when content-length exceeds the limit', async () => {
+    global.fetch = async () => makeFetchResponse({
+      status: 200,
+      headers: { 'content-type': 'text/plain', 'content-length': String(webFetchTool._test.MAX_RESPONSE_BYTES + 1) },
+      body: 'small body',
+    });
+
+    const res = await webFetchTool.execute({
+      url: 'https://example.com/large',
+    }, { urlPolicy: { resolveDns: false } });
+
+    assert.equal(res.error, undefined);
+    assert.equal(res.truncated, true);
+    assert.equal(res.content, 'small body');
   });
 });
 
@@ -660,6 +720,17 @@ describe('executeToolCall', () => {
     });
     assert.ok(res.result.error);
     assert.ok(res.result.error.includes('offset must be a non-negative integer'));
+  });
+
+  it('returns error for invalid BackgroundRead maxChars', async () => {
+    const res = await executeToolCall({
+      function: {
+        name: 'BackgroundRead',
+        arguments: JSON.stringify({ taskId: 'bg_1', maxChars: -1 }),
+      },
+    });
+    assert.ok(res.result.error);
+    assert.ok(res.result.error.includes('maxChars must be a positive integer'));
   });
 
   it('executes a valid tool call successfully', async () => {

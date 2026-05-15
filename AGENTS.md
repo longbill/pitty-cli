@@ -16,7 +16,7 @@ This document outlines contribution guidelines for the Pitty CLI project — an 
 - `npm start`: Run the CLI locally
 - `npm test`: Run all unit tests with Node.js built-in test runner
 
-Requires Node.js 18+. All dependencies are installed via `npm install`.
+Requires Node.js 20+. All dependencies are installed via `npm install`.
 
 ## Coding Style
 

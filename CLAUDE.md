@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Pitty CLI — 一个基于 OpenAI-compatible Chat Completions API 的 AI 编程助手 CLI。Node.js >= 18，CommonJS 模块。
+Pitty CLI — 一个基于 OpenAI-compatible Chat Completions API 的 AI 编程助手 CLI。Node.js >= 20，CommonJS 模块。
 
 ## 常用命令
 
