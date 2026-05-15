@@ -449,6 +449,22 @@ describe('Background task tools', () => {
     assert.equal(backgroundStopTool.execute({ taskId: 'bg_missing' }).ok, false);
   });
 
+  it('caps retained background task output', async () => {
+    backgroundTasks.resetForTests();
+    const created = await backgroundCreateTool.execute({ command: 'sleep 5', workdir: '/tmp' });
+    const task = backgroundTasks.getTask(created.taskId);
+    const max = backgroundTasks._test.MAX_STREAM_CHARS;
+
+    backgroundTasks.appendTaskOutput(task, 'stdout', 'a'.repeat(max + 20));
+    assert.equal(task.stdout.length, max);
+    assert.equal(task.stdoutTruncated, true);
+
+    const read = backgroundReadTool.execute({ taskId: created.taskId, maxChars: max + 100 });
+    assert.equal(read.truncated, true);
+    assert.equal(read.output.length, max);
+    backgroundTasks.resetForTests();
+  });
+
   it('stops child processes in the background task process group', async () => {
     backgroundTasks.resetForTests();
     const marker = path.join(testDir, 'bg-process-group.txt');
@@ -610,6 +626,40 @@ describe('executeToolCall', () => {
     const res = await executeToolCall({ function: { name: 'Glob', arguments: '{}' } });
     assert.ok(res.result.error);
     assert.ok(res.result.error.includes('必要参数') || res.result.error.includes('Missing required'));
+  });
+
+  it('returns error for invalid argument types', async () => {
+    const res = await executeToolCall({
+      function: {
+        name: 'WebFetch',
+        arguments: JSON.stringify({ url: 123 }),
+      },
+    });
+    assert.ok(res.result.error);
+    assert.ok(res.result.error.includes('Invalid tool arguments'));
+    assert.ok(res.result.error.includes('url must be a string'));
+  });
+
+  it('returns error for out-of-range numeric arguments', async () => {
+    const res = await executeToolCall({
+      function: {
+        name: 'Bash',
+        arguments: JSON.stringify({ command: 'echo hi', timeout: 999999999 }),
+      },
+    });
+    assert.ok(res.result.error);
+    assert.ok(res.result.error.includes('timeout must be <='));
+  });
+
+  it('returns error for negative pagination arguments', async () => {
+    const res = await executeToolCall({
+      function: {
+        name: 'Glob',
+        arguments: JSON.stringify({ pattern: '*.js', offset: -1 }),
+      },
+    });
+    assert.ok(res.result.error);
+    assert.ok(res.result.error.includes('offset must be a non-negative integer'));
   });
 
   it('executes a valid tool call successfully', async () => {
