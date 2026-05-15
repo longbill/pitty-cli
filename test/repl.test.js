@@ -1,34 +1,40 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
+const { PassThrough } = require('stream');
 const { createHistory } = require('../lib/inputHistory.js');
 const repl = require('../lib/repl.js');
 const switchModel = require('../lib/switchModel.js');
+const { createConfirmFn } = require('../lib/confirm.js');
+const { formatBackgroundTaskReminder, formatShellReminder } = require('../lib/replReminders.js');
+
+function makeTtyInput() {
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.rawModes = [];
+  input.pauseCount = 0;
+  input.resumeCount = 0;
+  input.setRawMode = (value) => { input.rawModes.push(value); return input; };
+  const originalPause = input.pause.bind(input);
+  const originalResume = input.resume.bind(input);
+  input.pause = () => { input.pauseCount++; return originalPause(); };
+  input.resume = () => { input.resumeCount++; return originalResume(); };
+  return input;
+}
 
 describe('REPL stdin handling', () => {
-  it('resumes stdin after tool confirmation closes readline', () => {
-    const source = fs.readFileSync(path.join(__dirname, '../lib/repl.js'), 'utf-8');
-    const finishStart = source.indexOf('const finish = (answer) => {');
-    const finishEnd = source.indexOf('};\n    const onAbort', finishStart);
-    const finishBody = source.slice(finishStart, finishEnd);
+  it('restores raw mode and resumes stdin after confirmation', async () => {
+    const input = makeTtyInput();
+    const output = new PassThrough();
+    const confirm = createConfirmFn({ input, output, showSuccess: true });
 
-    assert.notEqual(finishStart, -1);
-    assert.notEqual(finishEnd, -1);
-    assert.ok(finishBody.includes('rl.close();'));
-    assert.ok(finishBody.includes('process.stdin.resume();'));
-  });
+    const promise = confirm('confirm? ', undefined, 'done');
+    input.write('\n');
+    const result = await promise;
 
-  it('removes the REPL data handler while shell command owns stdin', () => {
-    const source = fs.readFileSync(path.join(__dirname, '../lib/repl.js'), 'utf-8');
-    const start = source.indexOf('function detachInputHandler()');
-    const end = source.indexOf('async function handleInput(input)', start);
-    const shellHandling = source.slice(start, end);
-
-    assert.notEqual(start, -1);
-    assert.notEqual(end, -1);
-    assert.ok(shellHandling.includes("process.stdin.removeListener('data', onData);"));
-    assert.ok(shellHandling.includes("process.stdin.on('data', onData);"));
+    assert.deepEqual(result, { ok: true, userInput: '' });
+    assert.deepEqual(input.rawModes, [false, true]);
+    assert.ok(input.pauseCount >= 1);
+    assert.ok(input.resumeCount >= 1);
   });
 });
 
@@ -37,7 +43,7 @@ describe('background task reminders', () => {
   it('formats task output with task metadata and duration', () => {
     const startTime = new Date(2026, 4, 12, 10, 20, 30, 123);
     const endTime = new Date(2026, 4, 12, 10, 22, 35, 456);
-    const text = repl._test.formatBackgroundTaskReminder([{
+    const text = formatBackgroundTaskReminder([{
       id: 'bg_1',
       command: 'watch nvidia-smi',
       cwd: '/root',
@@ -52,6 +58,27 @@ describe('background task reminders', () => {
     assert.ok(text.includes('[TASK_ID="bg_1" COMMAND="watch nvidia-smi" CWD="/root" STATUS="running" START_TIME="2026-05-12 10:20:30.123"]'));
     assert.ok(text.includes('GPU output'));
     assert.ok(text.includes('[END_OF_TASK_OUTPUT DURATION_SECONDS="125"]'));
+  });
+});
+
+describe('shell reminders', () => {
+  it('formats recent shell command output', () => {
+    const startTime = new Date(2026, 4, 12, 10, 20, 30, 123);
+    const endTime = new Date(2026, 4, 12, 10, 20, 31, 456);
+    const text = formatShellReminder([{
+      command: 'npm test',
+      cwd: '/repo',
+      output: '\x1b[31mfailed\x1b[0m',
+      exitCode: 1,
+      startTime,
+      endTime,
+    }]);
+
+    assert.ok(text.includes('<system-reminder>'));
+    assert.ok(text.includes('[COMMAND="npm test" CWD="/repo" TIME="2026-05-12 10:20:30.123"]'));
+    assert.ok(text.includes('failed'));
+    assert.equal(text.includes('\x1b[31m'), false);
+    assert.ok(text.includes('[COMMAND_EXIT_CODE="1" TIME="2026-05-12 10:20:31.456"]'));
   });
 });
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-const readline = require('readline');
 const logger = require('./lib/logger.js');
 const config = require('./lib/config.js');
 const { _, _fmt } = require('./lib/lang/index.js');
 const chat = require('./lib/chat.js');
 const bashTool = require('./lib/tools/bash.js');
+const { createConfirmFn } = require('./lib/confirm.js');
 const { run } = chat;
 
 logger.logInfo({ event: 'startup', cwd: process.cwd(), args: process.argv.slice(2), node: process.version });
@@ -64,42 +64,6 @@ if (!mainModel || !mainModel.apiKey) {
   process.exit(1);
 }
 
-// ── Tool confirmation helper ──────────────────────────────────────────
-
-function makeConfirmFn() {
-  return (desc, signal) => new Promise((resolve) => {
-    if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
-      console.log(`\x1b[33m${desc}\x1b[0m`);
-      resolve({ ok: false, userInput: '' });
-      return;
-    }
-
-    process.stdin.setRawMode(false);
-    process.stdin.pause();
-
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    let finished = false;
-    const finish = (answer) => {
-      if (finished) return;
-      finished = true;
-      signal?.removeEventListener('abort', onAbort);
-      rl.close();
-      process.stdin.setRawMode(true);
-      process.stdin.resume();
-      const userInput = String(answer || '').trim();
-      resolve({ ok: userInput === '', userInput });
-    };
-    const onAbort = () => finish('');
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    rl.question(`\x1b[33m${desc}\x1b[0m`, finish);
-  });
-}
-
 // ── Dispatch ──────────────────────────────────────────────────────────
 const isInteractive = process.stdin.isTTY && !args.length;
 
@@ -131,7 +95,7 @@ async function runAndExit(prompt) {
   }
 
   try {
-    const result = await run(prompt, { confirm: makeConfirmFn(), statusBar: false });
+    const result = await run(prompt, { confirm: createConfirmFn(), statusBar: false });
     if (result.aborted) {
       console.log('\n' + _('cli.canceled'));
     }
