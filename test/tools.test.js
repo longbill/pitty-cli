@@ -1,4 +1,4 @@
-const { describe, it, before, after } = require('node:test');
+const { describe, it, before, after, afterEach } = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
@@ -453,6 +453,12 @@ describe('Background task tools', () => {
 // ── WebFetch ────────────────────────────────────────────────────────────────
 
 describe('WebFetch', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it('blocks non-http protocols', async () => {
     const res = await webFetchTool.execute({ url: 'file:///etc/passwd' });
     assert.ok(res.error);
@@ -467,6 +473,21 @@ describe('WebFetch', () => {
 
   it('blocks private IP hosts before fetching', async () => {
     const res = await webFetchTool.execute({ url: 'http://127.0.0.1:3000' });
+    assert.ok(res.error);
+    assert.ok(res.error.includes('URL host not allowed'));
+  });
+
+  it('blocks redirects to localhost before following them', async () => {
+    global.fetch = async () => ({
+      status: 302,
+      headers: { get: (name) => name.toLowerCase() === 'location' ? 'http://127.0.0.1:3000' : null },
+      body: new ReadableStream(),
+    });
+
+    const res = await webFetchTool.execute({
+      url: 'https://example.com/start',
+    }, { urlPolicy: { resolveDns: false } });
+
     assert.ok(res.error);
     assert.ok(res.error.includes('URL host not allowed'));
   });
