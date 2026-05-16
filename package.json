@@ -1,29 +1,47 @@
 {
-  "name": "pitty",
+  "name": "pitty-cli",
   "version": "0.1.0",
-  "description": "Pitty CLI — AI coding assistant in your terminal",
+  "description": "AI coding assistant in your terminal — powered by any OpenAI-compatible LLM",
   "main": "pitty.js",
   "bin": {
     "pitty": "./pitty.js"
   },
   "scripts": {
     "start": "node pitty.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "prepublishOnly": "npm test"
   },
+  "files": [
+    "lib/",
+    "pitty.js",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "pitty",
     "cli",
     "ai",
     "coding",
-    "assistant"
+    "assistant",
+    "llm",
+    "agent"
   ],
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/longbill/pitty-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/longbill/pitty-cli/issues"
+  },
+  "homepage": "https://github.com/longbill/pitty-cli#readme",
+  "author": "longbill <longbill.cn@gmail.com>",
   "license": "MIT",
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=16"
   },
   "dependencies": {
-    "string-width": "^8.2.1"
+    "string-width": "^4.2.3",
+    "undici": "^5.29.0"
   }
 }
